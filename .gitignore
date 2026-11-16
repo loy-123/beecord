@@ -1,0 +1,27 @@
+# ---- per-user / runtime (never commit) ----
+logs/
+inbox/
+*.log
+*.pid
+*.bak
+*.tmp
+node_modules/
+
+# user settings & data, but KEEP the auto-update config
+config.json
+config.backup-*.json
+data/*.json
+!data/update.json
+
+# theme caches, downloads and user-imported themes live only on each machine
+themes/.cache/
+themes/.remote/
+themes/.trash/
+
+# the original unreviewed binary that shipped with the upstream project (not distributed)
+installer.exe
+
+# OS junk
+Thumbs.db
+desktop.ini
+.DS_Store

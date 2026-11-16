@@ -1,0 +1,126 @@
+/**
+ * @name Celestial ImGui
+ * @author beecord
+ * @version 1.0.0
+ * @description Default beecord theme: the dark imgui look (near-black surfaces, hairline borders, pastel blue accent, JetBrains Mono).
+ */
+
+/* Palette (celestial): bg #0c0c0c, child #0f0f0f, panel #111, popup #141414, input #181818, borders #161616-#262626,
+   text #e8ecf2 / #aab1bd / #7c8390 / #646b78, accent rgb(157,191,234), pink rgb(242,169,188).
+   The font "BC Mono" is JetBrains Mono, loaded by beecord itself (no download). */
+
+:root, .theme-dark, .theme-darker, .theme-midnight, .visual-refresh, .visual-refresh.theme-dark, .visual-refresh .theme-dark {
+  /* classic variable names */
+  --background-primary: #0f0f0f !important;
+  --background-secondary: #0c0c0c !important;
+  --background-secondary-alt: #111111 !important;
+  --background-tertiary: #0a0a0a !important;
+  --background-accent: #181818 !important;
+  --background-floating: #141414 !important;
+  --background-nested-floating: #141414 !important;
+  --background-mobile-primary: #0f0f0f !important;
+  --background-mobile-secondary: #0c0c0c !important;
+  --background-message-hover: rgba(250, 250, 250, .025) !important;
+  --background-modifier-hover: rgba(250, 250, 250, .04) !important;
+  --background-modifier-active: rgba(250, 250, 250, .06) !important;
+  --background-modifier-selected: rgba(157, 191, 234, .14) !important;
+  --background-modifier-accent: #202020 !important;
+  --channeltextarea-background: #141414 !important;
+  --modal-background: #0f0f0f !important;
+  --modal-footer-background: #0c0c0c !important;
+  --deprecated-card-bg: #111111 !important;
+  --deprecated-card-editable-bg: #141414 !important;
+  --input-background: #181818 !important;
+  --scrollbar-thin-thumb: #262626 !important;
+  --scrollbar-auto-thumb: #262626 !important;
+  --scrollbar-auto-track: transparent !important;
+
+  /* visual-refresh variable names */
+  --background-base-lowest: #0a0a0a !important;
+  --background-base-lower: #0c0c0c !important;
+  --background-base-low: #0f0f0f !important;
+  --background-surface-high: #111111 !important;
+  --background-surface-higher: #141414 !important;
+  --background-surface-highest: #181818 !important;
+  --bg-base-primary: #0f0f0f !important;
+  --bg-base-secondary: #0c0c0c !important;
+  --bg-base-tertiary: #0a0a0a !important;
+  --bg-surface-raised: #111111 !important;
+  --bg-surface-overlay: #141414 !important;
+  --bg-mod-subtle: rgba(250, 250, 250, .04) !important;
+  --bg-mod-strong: rgba(250, 250, 250, .07) !important;
+  --bg-mod-faint: rgba(250, 250, 250, .025) !important;
+  --chat-background-default: #0f0f0f !important;
+  --chat-input-container-background: #141414 !important;
+  --border-faint: #161616 !important;
+  --border-subtle: #202020 !important;
+  --border-normal: #262626 !important;
+  --border-strong: #3e3e3e !important;
+  --app-frame-border: #161616 !important;
+
+  /* text */
+  --text-normal: #c8ced8 !important;
+  --text-default: #c8ced8 !important;
+  --text-strong: #e8ecf2 !important;
+  --text-muted: #7c8390 !important;
+  --text-subtle: #646b78 !important;
+  --text-link: #9dbfea !important;
+  --header-primary: #e8ecf2 !important;
+  --header-secondary: #aab1bd !important;
+  --channels-default: #7c8390 !important;
+  --channel-icon: #646b78 !important;
+  --interactive-normal: #aab1bd !important;
+  --interactive-hover: #e8ecf2 !important;
+  --interactive-active: #e8ecf2 !important;
+  --interactive-muted: #4a505c !important;
+  --icon-default: #aab1bd !important;
+  --icon-muted: #646b78 !important;
+
+  /* accent */
+  --brand-500: #9dbfea !important;
+  --brand-560: #8aa8ce !important;
+  --brand-600: #7b98bd !important;
+  --brand-experiment: #9dbfea !important;
+  --brand-experiment-560: #8aa8ce !important;
+  --control-brand-foreground: #9dbfea !important;
+  --control-brand-foreground-new: #9dbfea !important;
+  --button-filled-brand-background: #9dbfea !important;
+  --button-filled-brand-background-hover: #b0cbee !important;
+  --button-filled-brand-background-active: #8aa8ce !important;
+  --button-filled-brand-text: #0f1216 !important;
+  --mention-foreground: #9dbfea !important;
+  --mention-background: rgba(157, 191, 234, .14) !important;
+  --info-help-foreground: #9dbfea !important;
+  --status-danger: #e88080 !important;
+  --status-positive: #80d09c !important;
+  --status-warning: #e8c478 !important;
+  --text-positive: #80d09c !important;
+  --text-danger: #e88080 !important;
+  --text-warning: #e8c478 !important;
+
+  /* fonts and corners */
+  --font-primary: "BC Mono", "JetBrains Mono", ui-monospace, Consolas, monospace !important;
+  --font-display: "BC Mono", "JetBrains Mono", ui-monospace, Consolas, monospace !important;
+  --font-headline: "BC Mono", "JetBrains Mono", ui-monospace, Consolas, monospace !important;
+  --font-code: "BC Mono", "JetBrains Mono", ui-monospace, Consolas, monospace !important;
+  --radius-xs: 4px !important;
+  --radius-sm: 4px !important;
+  --radius-md: 6px !important;
+  --radius-lg: 8px !important;
+  --radius-xl: 10px !important;
+}
+
+/* mono text reads a little large at Discord's default sizes */
+body { -webkit-font-smoothing: antialiased; }
+[class*="markup"], [class*="messageContent"] { font-size: 0.94rem; letter-spacing: -0.01em; }
+
+/* message box: hairline border like the imgui inputs */
+[class*="channelTextArea"] > [class*="scrollableContainer"] { border: 1px solid #202020; }
+
+/* messages that mention you, in the accent */
+li[id^="chat-messages-"] [class*="mentioned"]::before { background: #9dbfea !important; }
+li[id^="chat-messages-"] [class*="mentioned"] { background: rgba(157, 191, 234, .07) !important; }
+
+/* scrollbars */
+::-webkit-scrollbar-thumb { background-color: #262626 !important; border-radius: 4px !important; }
+::-webkit-scrollbar-thumb:hover { background-color: #3e3e3e !important; }

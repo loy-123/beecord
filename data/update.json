@@ -1,0 +1,10 @@
+{
+  "_comment": "Auto-update settings. Set owner+repo to YOUR public GitHub repo, then push. Every client's watcher checks this repo and updates itself. Plugin changes apply live; loader/renderer changes restart Discord. For a PRIVATE repo, also put a GitHub token with 'repo' scope in token (not recommended for sharing).",
+  "enabled": true,
+  "owner": "loy-123",
+  "repo": "beecord",
+  "branch": "main",
+  "intervalMinutes": 5,
+  "restartOnCodeChange": true,
+  "token": ""
+}
