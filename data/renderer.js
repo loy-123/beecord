@@ -5,6 +5,8 @@
 
 (() => {
     if (window.beecord || window.blxstncord) return;
+    // never run in Discord's in-game overlay (beecord HUDs would cover the game you're playing)
+    try { if (window.__OVERLAY__ === true || /(^|\/)overlay(\/|$)/i.test(location.pathname)) return; } catch { }
 
     // ---------- config ----------
     const KEY = "beecord_config_v1";
@@ -217,11 +219,14 @@
         };
         for (const id of Object.keys(req.c)) { let ex; try { ex = req.c[id] && req.c[id].exports; } catch { continue; } look(ex, 2); }
     }
+    let lastStoreForce = 0;
     function getStore(name) {
         if (!req) return null;
         if (storeIndex.has(name)) return storeIndex.get(name);
         indexStores(false);
-        if (!storeIndex.has(name)) indexStores(true); // a store module may have loaded since the last walk
+        // a store module may have loaded since the last walk — but don't force a full re-walk more than
+        // once every 8s, so a plugin repeatedly asking for a missing store can't trigger constant scans.
+        if (!storeIndex.has(name) && Date.now() - lastStoreForce > 8000) { lastStoreForce = Date.now(); indexStores(true); }
         return storeIndex.get(name) || null;
     }
 
@@ -621,8 +626,12 @@
         try { w.fn(); } catch (e) { w.errors++; if (w.errors <= 3) log("dom watcher error in " + w.owner + ": " + (e && e.message || e)); }
         w.cost += performance.now() - t0; w.runs++;
     }
+    // Discord mutates the DOM continuously, so a watcher with no throttle would run on every animation
+    // frame (~60/s). Default to 200ms (≈5/s) unless a plugin explicitly asks for a different rate.
+    const DEFAULT_DOM_THROTTLE = 200;
     function addDomWatcher(fn, opts, owner) {
-        const w = { fn, throttle: Math.max(0, Number(opts && opts.throttle) || 0), last: 0, pending: false, owner: owner || "?", errors: 0, cost: 0, runs: 0 };
+        const throttle = opts && opts.throttle != null ? Math.max(0, Number(opts.throttle) || 0) : DEFAULT_DOM_THROTTLE;
+        const w = { fn, throttle, last: 0, pending: false, owner: owner || "?", errors: 0, cost: 0, runs: 0 };
         domWatchers.add(w);
         if (!domMO && document.documentElement) {
             domMO = new MutationObserver(() => { if (domQueued) return; domQueued = true; requestAnimationFrame(domFlush); });
@@ -943,13 +952,13 @@
         --ig-font:"BC Mono","JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace}
     #blxstncord-panel{--bc-accent:var(--ig-accent);--bc-line:var(--ig-child-border);--bc-surface:var(--ig-child);--bc-surface-2:var(--ig-input);--bc-inset:#0b0b0b;
         --bc-dim:var(--ig-secondary);--bc-text:var(--ig-feature);--bc-head:var(--ig-bright);
-        padding:18px!important;overflow:hidden!important;animation:none!important;background:rgba(0,0,0,.55)!important;
+        padding:0!important;overflow:hidden!important;animation:none!important;background:transparent!important;
         font-family:var(--ig-font)!important;font-size:12.5px!important;line-height:1.45;color:var(--ig-feature);-webkit-font-smoothing:antialiased}
     #blxstncord-panel[data-light]{--bc-line:var(--ig-child-border)}
     #blxstncord-panel.bc-anim .ig-window{animation:ig-open .3s cubic-bezier(.2,1.2,.4,1) both}
     @keyframes ig-open{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
-    #blxstncord-panel .ig-window{position:relative;display:grid;grid-template-columns:168px 1fr;height:100%;max-width:1060px;margin:0 auto;
-        border:1px solid var(--ig-border);border-radius:var(--ig-r-card);background:var(--ig-bg);box-shadow:0 2px 12px rgba(0,0,0,.3),0 20px 60px rgba(0,0,0,.45);overflow:hidden}
+    #blxstncord-panel .ig-window{position:relative;display:grid;grid-template-columns:168px 1fr;height:100%;width:100%;max-width:none;margin:0;
+        border:0;border-left:1px solid var(--ig-border);border-radius:0;background:var(--ig-bg);box-shadow:none;overflow:hidden}
     #blxstncord-panel .ig-stars{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
     #blxstncord-panel .ig-side{position:relative;z-index:1;display:flex;flex-direction:column;padding:18px 8px 8px;border-right:1px solid var(--ig-border);min-height:0}
     #blxstncord-panel .ig-brand{display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 18px;height:26px;color:var(--ig-bright);
@@ -2188,7 +2197,18 @@
     }
 
     function positionPanel() {
-        if (panel) panel.style.left = panelLeft + "px";
+        if (!panel) return;
+        // Fit the panel to Discord's settings content region (right of its sidebar, below the title bar),
+        // so it sits inside the settings page instead of floating over it.
+        let top = 0, right = 0, bottom = 0;
+        try {
+            const sv = (sidebarEl && sidebarEl.closest && sidebarEl.closest('[class*="standardSidebarView"]')) || document.querySelector('[class*="standardSidebarView"]');
+            if (sv) { const r = sv.getBoundingClientRect(); top = Math.max(0, Math.round(r.top)); right = Math.max(0, Math.round(window.innerWidth - r.right)); bottom = Math.max(0, Math.round(window.innerHeight - r.bottom)); }
+        } catch { }
+        panel.style.left = panelLeft + "px";
+        panel.style.top = top + "px";
+        panel.style.right = right + "px";
+        panel.style.bottom = bottom + "px";
     }
 
     // our sidebar tabs look selected only while their panel is open
@@ -2198,6 +2218,15 @@
             if (!el || !el.isConnected) continue;
             el.className = (panel && view === panelView && sel) ? sel.className : tabOrigClass[view];
         }
+    }
+
+    // Append the panel inside Discord's settings view (which holds the focus-trap), not document.body —
+    // otherwise the trap yanks focus back the instant one of our inputs is clicked, so you can't type.
+    function panelHost() {
+        try {
+            const anchor = sidebarEl || document.querySelector('[class*="standardSidebarView"]');
+            return (anchor && anchor.closest && anchor.closest('[class*="standardSidebarView"]')) || (anchor && anchor.parentElement) || document.body;
+        } catch { return document.body; }
     }
 
     function openPanel(left, view) {
@@ -2221,7 +2250,7 @@
             panel.classList.add("bc-anim");
         }
         animateNext = true;
-        document.body.append(panel);
+        panelHost().append(panel);   // inside Discord's settings view, so its focus-trap doesn't steal focus from our inputs
         markTabs();
     }
 
@@ -2230,8 +2259,22 @@
         if (!keepTab) markTabs();
     }
 
+    // The panel is rebuilt whenever a plugin's status changes (constant during startup). Rebuilding while
+    // you're typing destroys the field mid-keystroke, which made every text box in the panel unusable.
+    // So: if any text field in the panel is focused, DON'T rebuild now — wait until you click away.
+    let deferRefresh = false, blurHooked = false;
     function refreshPanel() {
         if (!panel) return;
+        const act = document.activeElement;
+        if (act && panel.contains(act) && act.matches && act.matches('input, textarea, [contenteditable="true"]')) {
+            deferRefresh = true;
+            if (!blurHooked) {
+                blurHooked = true;
+                act.addEventListener("blur", () => { blurHooked = false; if (deferRefresh) { deferRefresh = false; refreshPanel(); } }, { once: true });
+            }
+            return;
+        }
+        deferRefresh = false;
         const left = panelLeft;
         const sc = el => el && (el.querySelector(".ig-content") || el);
         const scroll = sc(panel).scrollTop;
@@ -2527,6 +2570,8 @@
 
     function tick() {
         try { ensureTab(); } catch { }
+        // if Discord re-rendered the settings view and dropped our panel, put it back
+        try { if (panel && !panel.isConnected) { panelHost().append(panel); markTabs(); } } catch { }
     }
 
     let tabTimer = null;

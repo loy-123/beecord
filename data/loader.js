@@ -739,6 +739,9 @@ app.on("browser-window-created", (_event, win) => {
             mediaArtSeen.delete(win.webContents);
             const url = win.webContents.getURL();
             if (!/discord\.com/.test(url)) return;
+            // Discord's in-game overlay is a separate discord.com webContents. Don't inject there, or beecord's
+            // HUDs (Spotify card, clock, etc.) render on top of the game.
+            if (/(^|\/|\.)overlay(\/|$|\?|#|\.)/i.test(url)) { log("skipping Discord overlay: " + url); return; }
             log("injecting into " + url);
             // UI font (JetBrains Mono, OFL) is handed over as base64 and loaded with the FontFace API
             // (binary source -> not affected by Discord's font-src CSP)

@@ -270,16 +270,11 @@ let blxMarkAll = null;   // lets the settings tab talk to the running plugin
         let floatOk = false;
         const ft = setTimeout(() => { floatOk = true; try { place(); } catch { } }, 15000);
         let obsTimer = 0;
-        const mo = new MutationObserver(() => {
-            if (obsTimer) return;
-            obsTimer = setTimeout(() => { obsTimer = 0; try { place(); } catch { } }, 200);
-        });
-        mo.observe(document.documentElement, { childList: true, subtree: true });
+        api.dom.observe(() => { try { place(); } catch { } }, { throttle: 300 });   // shared core watcher
         const poll = setInterval(() => { try { place(); } catch { } }, 3000);
         place();
 
         api.cleanup(() => {
-            mo.disconnect();
             clearInterval(poll);
             clearTimeout(ft);
             clearTimeout(obsTimer);

@@ -684,8 +684,7 @@ let blxDevScan = null;
         }
         blxDevScan = schedule;
 
-        const mo = new MutationObserver(schedule);
-        mo.observe(document.documentElement, { childList: true, subtree: true });
+        api.dom.observe(schedule, { throttle: 250 });   // shared core watcher
 
         const iv = setInterval(() => {
             const old = Date.now() - REVEAL_MS * 2;
@@ -701,7 +700,6 @@ let blxDevScan = null;
         api.cleanup(() => {
             stopped = true;
             blxDevScan = null;
-            mo.disconnect();
             clearInterval(iv); clearTimeout(timer); tries.forEach(clearTimeout);
             flush();
             document.querySelectorAll("g[data-blx-dev]").forEach(g => g.remove());

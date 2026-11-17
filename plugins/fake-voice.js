@@ -393,11 +393,7 @@ let ctl = null; // lets the settings tab talk to the running plugin
         }
 
         let timer = null;
-        const mo = new MutationObserver(() => {
-            if (timer) return;
-            timer = setTimeout(() => { timer = null; try { ensureButtons(); } catch (e) { api.log("button error: " + (e && e.message || e)); } }, 200);
-        });
-        mo.observe(document.documentElement, { childList: true, subtree: true });
+        api.dom.observe(() => { try { ensureButtons(); } catch (e) { api.log("button error: " + (e && e.message || e)); } }, { throttle: 300 });   // shared core watcher
         try { ensureButtons(); } catch { }
 
         const diag = setTimeout(() => {
@@ -410,7 +406,6 @@ let ctl = null; // lets the settings tab talk to the running plugin
         }, 20000);
 
         api.cleanup(() => {
-            mo.disconnect();
             clearTimeout(timer);
             clearTimeout(diag);
             if (btn) btn.remove();

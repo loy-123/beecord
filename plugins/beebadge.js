@@ -163,8 +163,7 @@
             if (timer || stopped) return;
             timer = setTimeout(() => { timer = null; try { scan(); } catch (e) { api.log("scan error: " + (e && e.message || e)); } }, 150);
         }
-        const mo = new MutationObserver(schedule);
-        mo.observe(document.documentElement, { childList: true, subtree: true });
+        api.dom.observe(schedule, { throttle: 250 });   // shared core watcher (one observer for all plugins)
         api.on(window, "blx-beebadge", schedule);   // fired by the settings switch
 
         const report = () => api.log("self-check: own user id " + (me ? "known" : "NOT known (the bee cannot tell which profile is yours)") +
@@ -173,7 +172,7 @@
 
         api.cleanup(() => {
             stopped = true;
-            mo.disconnect(); clearTimeout(timer); rt.forEach(clearTimeout);
+            clearTimeout(timer); rt.forEach(clearTimeout);
             document.querySelectorAll("[data-bee]").forEach(n => n.remove());
         });
         schedule();

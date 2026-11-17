@@ -52,8 +52,8 @@ let refreshSpotify = null;
 
         // ---------- styles ----------
         api.addStyle(`
-        .bsp-card{--ac:#1db954;position:relative;overflow:hidden;margin:8px 8px 0;padding:10px 12px;border-radius:10px;box-sizing:border-box;
-            background:rgba(127,127,127,.14);border:1px solid rgba(255,255,255,.07);color:var(--text-default,var(--text-normal,#dbdee1));
+        .bsp-card{--ac:#9dbfea;position:relative;overflow:hidden;margin:8px 8px 0;padding:10px 12px;border-radius:8px;box-sizing:border-box;
+            background:var(--background-surface-high,var(--background-secondary-alt,rgba(127,127,127,.14)));border:1px solid var(--border-subtle,rgba(255,255,255,.07));color:var(--text-default,var(--text-normal,#dbdee1));
             font-family:var(--font-primary,"gg sans","Noto Sans",sans-serif);user-select:none;animation:bsp-in .4s cubic-bezier(.2,.7,.2,1) backwards;
             transition:padding .22s ease,margin .22s ease}
         .bsp-roll-btn{position:absolute;top:2px;left:50%;transform:translateX(-50%);width:38px;height:14px;border-radius:7px;
@@ -71,7 +71,7 @@ let refreshSpotify = null;
         .bsp-card.bsp-collapsed .bsp-art svg{width:13px;height:13px}
         .bsp-card.bsp-collapsed .bsp-marq{font-size:12px;line-height:15px}
         .bsp-card.bsp-collapsed .bsp-artist{font-size:10.5px;line-height:13px}
-        .bsp-card.bsp-float{position:fixed;left:8px;bottom:72px;width:232px;margin:0;z-index:120;background:var(--background-base-lower,#1e1f22)}
+        .bsp-card.bsp-float{position:fixed;left:8px;bottom:72px;width:232px;margin:0;z-index:120;background:var(--background-base-low,var(--background-base-lower,#111));border-color:var(--border-subtle,#202020);box-shadow:0 8px 28px rgba(0,0,0,.5)}
         .bsp-card *{box-sizing:border-box}
         :where(.bsp-card) button{all:unset;box-sizing:border-box;cursor:pointer}
         .bsp-card .bsp-btn:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
