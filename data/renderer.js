@@ -2849,8 +2849,12 @@
                 el.__bcAuthor = aid;
                 if (el.__bcBadge && el.__bcBadge.parentNode) el.__bcBadge.remove();
                 el.__bcBadge = null;
-                if (!aid || !bee.has(aid)) continue;            // only people who use beecord get a badge
+                if (!aid) continue;
                 const u = r.users[aid];
+                // an assigned rank shows to EVERYONE (not gated on presence, so it never
+                // becomes "only visible to yourself"); a generic beecord badge still needs
+                // the user to be a confirmed beecord user (presence set).
+                if (!u && !bee.has(aid)) continue;
                 const rank = (u && u.rank && r.ranks[u.rank]) || GENERIC;   // their rank, or a generic beecord badge
                 const b = document.createElement("span"); b.className = "bc-rank-badge" + (rank.glow ? " bc-glow" : ""); b.textContent = rank.label || "";
                 b.style.setProperty("--rc", rank.color || "#9dbfea"); b.title = rank.label + " · UID " + ((u && u.uid) || deriveUid(aid));
