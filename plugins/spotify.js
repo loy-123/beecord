@@ -83,7 +83,8 @@ let refreshSpotify = null;
         .bsp-card *{box-sizing:border-box}
         :where(.bsp-card) button{all:unset;box-sizing:border-box;cursor:pointer}
         .bsp-card .bsp-btn:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
-        .bsp-bg{position:absolute;inset:-24px;background-size:cover;background-position:center;filter:blur(26px) saturate(1.5);opacity:.38;pointer-events:none;transition:opacity .5s}
+        .bsp-bg{position:absolute;inset:-24px;background-size:cover;background-position:center;filter:blur(22px) saturate(1.4);opacity:.38;pointer-events:none;
+            transition:opacity .5s;transform:translateZ(0);backface-visibility:hidden;will-change:opacity}
         .bsp-card.noart .bsp-bg{opacity:0}
         .bsp-row{position:relative;display:flex;align-items:center;gap:10px;transition:gap .28s ease,padding .28s ease}
         .bsp-art{width:44px;height:44px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center;color:var(--ac);
@@ -98,7 +99,7 @@ let refreshSpotify = null;
         .bsp-marq.scroll .bsp-title{animation:bsp-marq var(--dur,8s) ease-in-out infinite alternate}
         .bsp-artist{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px;line-height:16px;color:var(--text-muted,#949ba4);transition:font-size .26s ease,line-height .26s ease}
         .bsp-eq{display:flex;align-items:flex-end;gap:2px;width:15px;height:14px;flex:none;opacity:.9}
-        .bsp-eq i{flex:1;height:22%;border-radius:1px;background:var(--ac);transition:height .3s}
+        .bsp-eq i{flex:1;height:100%;border-radius:1px;background:var(--ac);transform:scaleY(.22);transform-origin:bottom;transition:transform .3s}
         .bsp-card.playing .bsp-eq i{animation:bsp-eq .9s ease-in-out infinite alternate}
         .bsp-card.playing .bsp-eq i:nth-child(2){animation-duration:.65s;animation-delay:-.2s}
         .bsp-card.playing .bsp-eq i:nth-child(3){animation-duration:1.1s;animation-delay:-.45s}
@@ -129,7 +130,7 @@ let refreshSpotify = null;
             box-shadow:0 6px 20px color-mix(in srgb,var(--ac) 70%,transparent),inset 0 1px 0 rgba(255,255,255,.5),inset 0 -2px 4px rgba(0,0,0,.18);transform:translateY(-1px) scale(1.1)}
         .bsp-btn.main:active{transform:scale(.9)}
         .bsp-btn.main svg{width:22px;height:22px}
-        .bsp-btn.main::before{content:"";position:absolute;inset:0;border-radius:50%;pointer-events:none}
+        .bsp-btn.main::before{content:"";position:absolute;inset:0;border-radius:50%;pointer-events:none;box-shadow:0 0 0 2px color-mix(in srgb,var(--ac) 50%,transparent);opacity:0}
         .bsp-card.playing .bsp-btn.main::before{animation:bsp-ring 2.2s ease-out infinite}
         .bsp-prog{position:relative;display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--text-muted,#949ba4);font-variant-numeric:tabular-nums}
         .bsp-time{min-width:28px;flex:none}
@@ -140,12 +141,12 @@ let refreshSpotify = null;
         .bsp-wave i{flex:1;min-width:1px;height:calc(var(--h) * 100%);border-radius:2px;transform-origin:center;transition:transform .25s}
         .bsp-wl{position:absolute;inset:0}
         .bsp-wl.dim i{background:rgba(127,127,127,.38)}
-        .bsp-wl.lit{clip-path:inset(0 calc(100% - var(--p)) 0 0);filter:drop-shadow(0 0 5px color-mix(in srgb,var(--ac) 70%,transparent))}
+        .bsp-wl.lit{clip-path:inset(0 calc(100% - var(--p)) 0 0)}
         .bsp-wl.lit i{background:linear-gradient(to top,color-mix(in srgb,var(--ac) 70%,#000),var(--ac) 55%,color-mix(in srgb,var(--ac) 60%,#fff))}
         .bsp-wl.ghost{clip-path:inset(0 calc(100% - var(--hp)) 0 0);opacity:0;transition:opacity .15s}
         .bsp-wl.ghost i{background:rgba(255,255,255,.28)}
         .bsp-bar:hover .bsp-wl.ghost,.bsp-bar.drag .bsp-wl.ghost{opacity:1}
-        .bsp-card.playing .bsp-wave i{animation:bsp-bounce var(--bd,1s) ease-in-out infinite alternate;animation-delay:var(--dl,0s)}
+        .bsp-card.playing .bsp-wave:not(.ghost) i{animation:bsp-bounce var(--bd,1s) ease-in-out infinite alternate;animation-delay:var(--dl,0s)}
         .bsp-bar:hover .bsp-wave i,.bsp-bar.drag .bsp-wave i{animation-play-state:paused;transform:scaleY(1.12)}
         .bsp-head{position:absolute;top:1px;bottom:1px;left:var(--p);width:2px;margin-left:-1px;border-radius:1px;background:#fff;
             box-shadow:0 0 8px 1px var(--ac),0 0 2px #fff;opacity:0;transition:opacity .2s,transform .2s}
@@ -180,7 +181,7 @@ let refreshSpotify = null;
         .bsp-vw{display:flex;align-items:flex-end;gap:2px}
         .bsp-vw i{flex:1;min-width:1px;height:calc(var(--h) * 100%);border-radius:2px;transform-origin:bottom}
         .bsp-wl.bsp-vw.lit i{background:color-mix(in srgb,#ff4d6d calc(var(--t) * .55%),var(--ac))}
-        .bsp-wl.bsp-vw.lit{filter:drop-shadow(0 0 4px color-mix(in srgb,var(--ac) 65%,transparent))}
+        .bsp-wl.bsp-vw.lit{filter:none}
         .bsp-vbar:hover .bsp-wl.ghost,.bsp-vbar.drag .bsp-wl.ghost{opacity:1}
         .bsp-card.playing .bsp-vw.lit i{animation:bsp-vb var(--bd,.8s) ease-in-out infinite alternate;animation-delay:var(--dl,0s)}
         .bsp-vbar:hover .bsp-vw.lit i,.bsp-vbar.drag .bsp-vw.lit i{animation-play-state:paused}
@@ -195,8 +196,8 @@ let refreshSpotify = null;
         @keyframes bsp-vb{from{transform:scaleY(.8)}to{transform:scaleY(1)}}
         @keyframes bsp-pop{from{transform:scale(.4) rotate(-25deg);opacity:0}to{transform:none;opacity:1}}
         @keyframes bsp-rip{to{transform:scale(7);opacity:0}}
-        @keyframes bsp-ring{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ac) 55%,transparent)}100%{box-shadow:0 0 0 9px transparent}}
-        @keyframes bsp-eq{from{height:20%}to{height:100%}}
+        @keyframes bsp-ring{0%{transform:scale(1);opacity:.55}100%{transform:scale(1.5);opacity:0}}
+        @keyframes bsp-eq{from{transform:scaleY(.2)}to{transform:scaleY(1)}}
         @keyframes bsp-marq{0%,18%{transform:translateX(0)}82%,100%{transform:translateX(var(--shift,0px))}}
         @media (prefers-reduced-motion:reduce){:root:not([data-bc-motion="on"]) .bsp-card,:root:not([data-bc-motion="on"]) .bsp-card *{animation:none!important;transition:none!important}}
         `);
@@ -638,11 +639,13 @@ let refreshSpotify = null;
         // shared core watcher (one observer for all plugins), at most every 400 ms
         api.dom.observe(() => { try { mount(); } catch (e) { api.log("placement error: " + (e && e.message || e)); } }, { throttle: 400 });
 
-        // animate the progress bar only while something plays and the card is visible; otherwise check twice a second
+        // The dancing bars animate themselves via CSS (on the compositor). Here we only advance the
+        // progress fill + time text, which move <1px/sec, so ~15fps is plenty and avoids re-clipping the
+        // 36-bar waveform every frame. (Dragging the seek bar is handled separately and stays instant.)
         let raf = 0, idle = 0;
         const loop = () => {
             raf = 0; idle = 0;
-            if (card.style.display !== "none" && st.playing && !document.hidden && !isCollapsed) { tick(); raf = requestAnimationFrame(loop); }
+            if (card.style.display !== "none" && st.playing && !document.hidden && !isCollapsed) { tick(); idle = setTimeout(loop, 66); }
             else { if (card.style.display !== "none") tick(); idle = setTimeout(loop, 500); }
         };
         loop();
