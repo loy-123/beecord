@@ -742,6 +742,39 @@ function readBeecordVersion() {
     return out;
 }
 
+// ---- watcher safety net: guarantee the auto-updater is actually running ----
+// The Windows Startup entry launches watcher.js with the ABSOLUTE path of the `node` that existed at
+// install time. If the user's system Node is later removed, moved, or upgraded to a new versioned path
+// (nvm, a reinstall), that entry points at a missing exe — the watcher never runs, the client silently
+// stops auto-updating, and the version badge shows "dev build". On every Discord launch the loader now
+// re-discovers a working node.exe (PATH, then common install dirs) and starts the watcher if it isn't
+// already running, so a changed Node path self-heals. (Discord's own Electron can't stand in as the Node
+// runtime: Discord ships with the runAsNode fuse disabled, so ELECTRON_RUN_AS_NODE is ignored.)
+let watcherEnsured = false;
+function findNodeExe() {
+    const found = [];
+    try { require("child_process").execFileSync("where", ["node"], { encoding: "utf8", windowsHide: true }).split(/\r?\n/).forEach(l => { l = l.trim(); if (l) found.push(l); }); } catch { }
+    found.push("C:\\Program Files\\nodejs\\node.exe", "C:\\Program Files (x86)\\nodejs\\node.exe");
+    try { const pf = process.env.ProgramW6432; if (pf) found.push(path.join(pf, "nodejs", "node.exe")); } catch { }
+    for (const c of found) { try { if (c && fs.existsSync(c)) return c; } catch { } }
+    return null;
+}
+function ensureWatcher() {
+    if (watcherEnsured) return; watcherEnsured = true;
+    try {
+        const watcherPath = path.join(beecordDir, "data", "watcher.js");
+        if (!fs.existsSync(watcherPath)) return;
+        try {   // already running? (pid file holds a live process) -> leave it alone
+            const pid = parseInt(fs.readFileSync(path.join(logsDir, "watcher.pid"), "utf8"), 10);
+            if (pid) { try { process.kill(pid, 0); return; } catch (e) { if (e && e.code === "EPERM") return; } }
+        } catch { }
+        const node = findNodeExe();
+        if (!node) { log("ensureWatcher: no node.exe found — auto-update depends on the Startup entry / system Node"); return; }
+        spawn(node, [watcherPath], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+        log("watcher ensured via " + node);
+    } catch (e) { log("ensureWatcher error: " + (e && e.message || e)); }
+}
+
 // ---------- safe mode ----------
 // Starts Discord with beecord's panel only (no plugins, no themes) when
 //  - the file %APPDATA%\beecord\safe-mode exists (data\safe-mode.bat creates it), or
@@ -910,6 +943,7 @@ app.on("browser-window-created", (_event, win) => {
             // Discord's in-game overlay is a separate discord.com webContents. Don't inject there, or beecord's
             // HUDs (Spotify card, clock, etc.) render on top of the game.
             if (/(^|\/|\.)overlay(\/|$|\?|#|\.)/i.test(url)) { log("skipping Discord overlay: " + url); return; }
+            ensureWatcher();   // make sure the auto-updater is running (independent of system Node)
             // HWID ban: if this machine is banned by the owner, show a full-screen notice with a countdown,
             // inject nothing, and CLOSE Discord when the countdown ends. Fail-open on network error (checkHwidBan).
             const ban = await checkHwidBan();
