@@ -116,6 +116,11 @@
             try { const m = api.webpack.findByProps(["toggleSelfDeaf"], "toggleSelfDeaf"); if (m && m.toggleSelfDeaf) { m.toggleSelfDeaf(); return true; } } catch { }
             return false;
         };
+        // Log the current account out of Discord (used by the "log out on wrong passcode" option).
+        const doLogout = () => {
+            try { const m = api.webpack.findByProps(["logout"], "logout"); if (m && typeof m.logout === "function") { m.logout(); return true; } } catch { }
+            return false;
+        };
 
         // Always-safe, idempotent teardown. Exposed on window as a last-resort hatch.
         function forceReset(reason) {
@@ -236,6 +241,18 @@
                 if (attempts >= 3) patch.delayUntil = Date.now() + Math.min(30000, 5000 * (attempts - 2));
                 setData(patch);
                 refreshDelay();
+                // optional: log out of Discord once wrong attempts reach the chosen threshold
+                const logoutAfter = Number(S.get("logoutAfter", 0));
+                if (logoutAfter > 0 && attempts >= logoutAfter) {
+                    input.disabled = true;
+                    delay.classList.add("pcl-on");
+                    delayTxt.textContent = "Wrong passcode — logging out of Discord…";
+                    const ok = doLogout();
+                    // only clear the lock if logout actually fired (page will navigate to login);
+                    // if the logout module wasn't found, stay locked rather than granting access.
+                    if (ok) setData({ attempts: 0, delayUntil: null, locked: false });
+                    else { delayTxt.textContent = "Couldn't log out automatically."; setTimeout(() => refreshDelay(), 2500); }
+                }
             };
 
             const accept = async (code) => {
@@ -411,7 +428,10 @@
                 String(api.settings.get("autolockSeconds", 0)), v => api.settings.set("autolockSeconds", Number(v)))),
             api.ui.row("Lock on startup", api.ui.toggle(api.settings.get("lockOnStartup", true), v => api.settings.set("lockOnStartup", v))),
             api.ui.row("Hide notification content while locked", api.ui.toggle(api.settings.get("hideNotifications", true), v => api.settings.set("hideNotifications", v))),
-            api.ui.row("Deafen while locked", api.ui.toggle(api.settings.get("deafenWhileLocked", false), v => api.settings.set("deafenWhileLocked", v)))
+            api.ui.row("Deafen while locked", api.ui.toggle(api.settings.get("deafenWhileLocked", false), v => api.settings.set("deafenWhileLocked", v))),
+            api.ui.row("Log out of Discord on wrong passcode", api.ui.select([["0", "Never"], ["1", "After 1 wrong try"], ["2", "After 2 wrong tries"], ["3", "After 3 wrong tries"]],
+                String(api.settings.get("logoutAfter", 0)), v => api.settings.set("logoutAfter", Number(v)))),
+            api.ui.note("If set, entering the wrong passcode that many times logs this account out of Discord (you'll have to log back in with your email/password). Leave on ‘Never’ to disable.")
         ];
     }
 });
