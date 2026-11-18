@@ -1236,13 +1236,16 @@
         const sha = INFO.version ? String(INFO.version) : "";
         const short = sha ? sha.slice(0, 7) : "dev";
         const when = INFO.versionAt ? new Date(INFO.versionAt) : null;
+        const updating = !sha && !!INFO.repo;   // configured for updates but not synced yet (fresh install)
         const title = sha
             ? "beecord @ " + short
                 + (INFO.repo ? "\nrepo: " + INFO.repo + (INFO.branch ? " (" + INFO.branch + ")" : "") : "")
                 + (when ? "\nupdated: " + when.toLocaleString() : "")
                 + "\n\nclick to copy the full commit"
-            : "Running from a local/dev copy (no tracked commit yet)";
-        const label = h("span", null, sha ? "v·" + short : "dev build");
+            : updating
+                ? "beecord is doing its first update from " + INFO.repo + "…\nthe version shows once the updater runs (it may restart Discord once). If this stays, the updater isn't running — reinstall from a current build."
+                : "Running from a local/dev copy (no tracked commit yet)";
+        const label = h("span", null, sha ? "v·" + short : updating ? "updating…" : "dev build");
         const badge = h("div", { class: "ig-ver" + (sha ? "" : " dev"), role: "button", tabindex: "0", title }, h("i"), label);
         const copy = () => {
             if (!sha) return;
