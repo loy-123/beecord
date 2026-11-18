@@ -595,6 +595,15 @@ try {
 let fontB64 = null;
 const safeCall = f => { try { return f(); } catch { return null; } };
 
+// deployed beecord version: the commit the auto-updater last installed (written by watcher.js),
+// plus the configured repo it tracks, so the panel can show what you're running.
+function readBeecordVersion() {
+    const out = { sha: null, at: null, repo: null, branch: null };
+    try { const s = JSON.parse(fs.readFileSync(path.join(logsDir, "update-state.json"), "utf8")); out.sha = s.sha || null; out.at = s.at || null; } catch { }
+    try { const c = JSON.parse(fs.readFileSync(path.join(beecordDir, "data", "update.json"), "utf8")); if (c && c.owner && c.repo) { out.repo = c.owner + "/" + c.repo; out.branch = c.branch || "main"; } } catch { }
+    return out;
+}
+
 // ---------- safe mode ----------
 // Starts Discord with beecord's panel only (no plugins, no themes) when
 //  - the file %APPDATA%\beecord\safe-mode exists (data\safe-mode.bat creates it), or
@@ -756,8 +765,10 @@ app.on("browser-window-created", (_event, win) => {
             const diskConfig = loadDiskConfig();
             const diskFolders = loadDiskFolders();
             const safe = checkSafeMode();
+            const ver = readBeecordVersion();
             const info = { discord: safeCall(() => app.getVersion()), electron: process.versions.electron, chrome: process.versions.chrome,
-                dir: beecordDir, safeMode: safe, bootFailures: readBoot().pending || 0 };
+                dir: beecordDir, safeMode: safe, bootFailures: readBoot().pending || 0,
+                version: ver.sha, versionAt: ver.at, repo: ver.repo, branch: ver.branch };
             await win.webContents.executeJavaScript(
                 `window.__beecordDiskLogs = ${JSON.stringify(diskLogs)};\n` +
                 `window.__beecordDiskConfig = ${JSON.stringify(diskConfig)};\n` +

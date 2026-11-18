@@ -984,6 +984,12 @@
     #blxstncord-panel .ig-utxt b{color:var(--ig-bright);font-weight:600;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     #blxstncord-panel .ig-utxt small{font-size:10.5px;color:var(--ig-secondary)}
     #blxstncord-panel .ig-utxt small em{font-style:normal;color:var(--ig-accent)}
+    #blxstncord-panel .ig-ver{margin-top:6px;display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:var(--ig-r);cursor:pointer;
+        font:600 10.5px var(--ig-font);color:var(--ig-secondary);background:transparent;border:1px solid transparent;transition:background .15s,color .15s,border-color .15s;user-select:none}
+    #blxstncord-panel .ig-ver:hover{background:var(--ig-child);color:var(--ig-feature);border-color:var(--ig-child-border)}
+    #blxstncord-panel .ig-ver i{width:6px;height:6px;border-radius:50%;flex:none;background:var(--ig-accent);box-shadow:0 0 7px rgba(var(--ig-accent-rgb),.8)}
+    #blxstncord-panel .ig-ver.dev i{background:#d8a24a;box-shadow:0 0 7px rgba(216,162,74,.7)}
+    #blxstncord-panel .ig-ver span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.3px}
     #blxstncord-panel .ig-content{position:relative;z-index:1;min-height:0;overflow-y:auto;padding:8px 8px 8px 8px;scrollbar-width:thin;scrollbar-color:#2a2a2a transparent}
     #blxstncord-panel .ig-content>.fc-wrap{max-width:none;margin:0;padding:14px 16px 24px;min-height:100%;
         background:var(--ig-child);border:1px solid var(--ig-child-border);border-radius:var(--ig-r-p)}
@@ -1208,6 +1214,32 @@
         ["Others", "credits", "Credits", () => ICON_CREDITS, () => ""]
     ];
     const ICON_STATUS = "M3 13h4l3-8 4 14 3-6h4v-2h-5.2l-1.6 3.2L10 1 6.3 11H3z";
+    // small version badge in the sidebar: shows the commit the auto-updater last installed.
+    // Hover for the repo + install time; click to copy the full SHA.
+    function buildVersionBadge() {
+        const sha = INFO.version ? String(INFO.version) : "";
+        const short = sha ? sha.slice(0, 7) : "dev";
+        const when = INFO.versionAt ? new Date(INFO.versionAt) : null;
+        const title = sha
+            ? "beecord @ " + short
+                + (INFO.repo ? "\nrepo: " + INFO.repo + (INFO.branch ? " (" + INFO.branch + ")" : "") : "")
+                + (when ? "\nupdated: " + when.toLocaleString() : "")
+                + "\n\nclick to copy the full commit"
+            : "Running from a local/dev copy (no tracked commit yet)";
+        const label = h("span", null, sha ? "v·" + short : "dev build");
+        const badge = h("div", { class: "ig-ver" + (sha ? "" : " dev"), role: "button", tabindex: "0", title }, h("i"), label);
+        const copy = () => {
+            if (!sha) return;
+            const prev = label.textContent;
+            try { navigator.clipboard.writeText(sha); } catch { }
+            label.textContent = "copied ✓";
+            setTimeout(() => { label.textContent = prev; }, 1200);
+        };
+        badge.addEventListener("click", copy);
+        badge.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); copy(); } });
+        return badge;
+    }
+
     function igWindow(content) {
         const side = h("div", { class: "ig-side" }, h("div", { class: "ig-brand" }, h("i"), "bee", h("b", null, "cord")));
         let sec = null;
@@ -1227,6 +1259,7 @@
         let uname = "beecord";
         try { const n = document.querySelector('[class*="panels"] [class*="nameTag"] [class*="title"], [class*="panelTitleContainer"]'); if (n && n.textContent.trim()) uname = n.textContent.trim(); } catch { }
         side.append(h("div", { class: "ig-user" }, ava, h("div", { class: "ig-utxt" }, h("b", null, uname), h("small", null, h("em", null, "user"), " · " + running + "/" + plugins.size + " on"))));
+        side.append(buildVersionBadge());
         const stars = h("canvas", { class: "ig-stars" });
         const win = h("div", { class: "ig-window" }, stars, side, h("div", { class: "ig-content" }, content));
         startStars(stars);
