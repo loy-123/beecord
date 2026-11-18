@@ -35,6 +35,17 @@ const ranksIsOwner = api => {
     return api.settings.get("ownerId", null) === id;
 };
 
+// Discord Settings runs a react-focus-lock trap; a popup appended to document.body while Settings is
+// open can't be typed or clicked in. Append inside the ACTIVE focus-lock so the trap includes our popup.
+// Outside Settings there's no lock, so we fall back to document.body.
+function ranksAdminHost() {
+    try {
+        const lock = document.querySelector('[data-focus-lock-disabled="false"]');
+        if (lock) return lock;
+    } catch { }
+    return document.body;
+}
+
 let ranksAdminWrap = null;
 function ranksOpenAdmin(api) {
     if (!ranksIsOwner(api)) { try { api.toast("Admin panel is locked to the owner", "#e8c478", 1800); } catch { } return; }
@@ -125,7 +136,7 @@ function ranksOpenAdmin(api) {
             h("div", { style: "display:flex;gap:8px;margin-top:14px" }, copyBtn, mkBtn("Close", closeAdmin, true)));
     };
     draw();
-    document.body.append(wrap);
+    ranksAdminHost().append(wrap);
     ranksAdminWrap = wrap;
 }
 
