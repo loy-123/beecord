@@ -2788,5 +2788,47 @@
         }
     }, 500);
 
+    // ---------- rank badges (built into the core; data comes from the loader via window.__beecordRanks,
+    // which it keeps in sync with the ranks server). Read-only: no admin here — assignments are done from
+    // the owner's separate private admin tool. ----------
+    (function startRanksBadges() {
+        const DEF = { owner: { label: "OWNER", color: "#f0888a", glow: true }, dev: { label: "DEV", color: "#f2a9bc", glow: true }, admin: { label: "ADMIN", color: "#e8c478", glow: true }, premium: { label: "PREMIUM", color: "#b69cf0", glow: true }, supporter: { label: "SUPPORTER", color: "#80d09c", glow: false }, member: { label: "MEMBER", color: "#9dbfea", glow: false } };
+        const deriveUid = id => { let x = 0x811c9dc5; const s = String(id || ""); for (let i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 0x01000193); } return "BC-" + (x >>> 0).toString(16).toUpperCase().padStart(8, "0").slice(0, 6); };
+        const reg = () => { const d = (window.__beecordRanks) || {}; return { ranks: Object.assign({}, DEF, d.ranks || {}), users: d.users || {} }; };
+        try {
+            const st = document.createElement("style"); st.setAttribute("data-beecord", "ranks");
+            st.textContent = ".bc-rank-badge{display:inline-flex;align-items:center;margin-left:6px;padding:0 6px;height:15px;border-radius:5px;vertical-align:middle;font:800 9.5px/15px var(--ig-font,ui-monospace,monospace);letter-spacing:.04em;white-space:nowrap;position:relative;top:-1px;color:var(--rc,#9dbfea);background:color-mix(in srgb,var(--rc,#9dbfea) 15%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--rc,#9dbfea) 45%,transparent)}.bc-rank-badge.bc-glow{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--rc) 55%,transparent),0 0 7px color-mix(in srgb,var(--rc) 38%,transparent)}";
+            (document.head || document.documentElement).append(st);
+        } catch { }
+        let MS = null, SC = null;
+        const authorId = el => {
+            try {
+                const row = el.closest && el.closest('[id^="chat-messages-"]'); if (!row) return null;
+                const m = /chat-messages-(?:(\d+)-)?(\d+)/.exec(row.id); if (!m) return null;
+                MS = MS || getStore("MessageStore"); SC = SC || getStore("SelectedChannelStore");
+                const cid = m[1] || (SC && SC.getChannelId && SC.getChannelId());
+                const msg = MS && MS.getMessage && MS.getMessage(cid, m[2]);
+                return (msg && msg.author && msg.author.id) || null;
+            } catch { return null; }
+        };
+        const scan = () => {
+            const r = reg();
+            for (const el of document.querySelectorAll('[class*="username_"]')) {
+                const aid = authorId(el);
+                if (el.__bcAuthor === aid) continue;
+                el.__bcAuthor = aid;
+                if (el.__bcBadge && el.__bcBadge.parentNode) el.__bcBadge.remove();
+                el.__bcBadge = null;
+                if (!aid) continue;
+                const u = r.users[aid]; const rank = u && u.rank && r.ranks[u.rank]; if (!rank) continue;
+                const b = document.createElement("span"); b.className = "bc-rank-badge" + (rank.glow ? " bc-glow" : ""); b.textContent = rank.label || "";
+                b.style.setProperty("--rc", rank.color || "#9dbfea"); b.title = rank.label + " · UID " + ((u && u.uid) || deriveUid(aid));
+                el.__bcBadge = b; try { el.insertAdjacentElement("afterend", b); } catch { }
+            }
+        };
+        try { addDomWatcher(scan, { throttle: 400 }, "ranks"); } catch { }
+        window.addEventListener("beecord-ranks", () => { try { for (const el of document.querySelectorAll('[class*="username_"]')) el.__bcAuthor = undefined; scan(); } catch { } });
+    })();
+
     tick();
 })();

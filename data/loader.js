@@ -380,19 +380,6 @@ function startRanksSync(wc) {
     syncRanksFromServer(wc);
     if (!ranksSyncTimer) ranksSyncTimer = setInterval(() => syncRanksFromServer(ranksSyncWC), 3 * 60 * 1000);
 }
-// owner-only write: POST /assign or /remove with the admin key (which stays on the owner's machine)
-async function ranksServerWrite(win, p) {
-    const base = (p && p.server ? String(p.server) : ranksServerUrl() || "").replace(/\/+$/, "");
-    const notify = detail => { try { win.webContents.executeJavaScript(`window.dispatchEvent(new CustomEvent("beecord-ranks-result",{detail:${JSON.stringify(detail)}}));`).catch(() => { }); } catch { } };
-    if (!base || typeof fetch !== "function") { notify({ ok: false, status: 0, out: { error: "no server configured" } }); return; }
-    try {
-        const action = p.action === "remove" ? "remove" : "assign";
-        const res = await fetch(base + "/" + action, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ adminKey: p.adminKey, userId: p.userId, rank: p.rank, uid: p.uid }) });
-        let out = {}; try { out = await res.json(); } catch { }
-        await syncRanksFromServer(win.webContents);
-        notify({ ok: res.ok, status: res.status, out });
-    } catch (e) { log("ranks:write err: " + e.message); notify({ ok: false, status: 0, out: { error: String(e && e.message || e) } }); }
-}
 
 // ---------- themes (Themes plugin) ----------
 // Local themes: %APPDATA%\beecord\themes\*.css (BetterDiscord *.theme.css works too).
@@ -758,13 +745,6 @@ app.on("browser-window-created", (_event, win) => {
                 const idx = msg.indexOf("cmd:save-folders:");
                 saveDiskFolders(JSON.parse(msg.slice(idx + 17)));
             } catch (e) { log("save-folders err: " + e.message); }
-            return;
-        }
-        if (msg.includes("cmd:ranks:write:")) {
-            try {
-                const idx = msg.indexOf("cmd:ranks:write:");
-                ranksServerWrite(win, JSON.parse(msg.slice(idx + "cmd:ranks:write:".length)));
-            } catch (e) { log("ranks:write parse err: " + e.message); }
             return;
         }
         if (msg.includes("cmd:log-entry:")) {

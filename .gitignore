@@ -25,6 +25,9 @@ installer.exe
 # private, local-only agent handoff doc — kept on this machine, never pushed to the public repo
 /AGENTS.md
 
+# private rank-admin tool — owner-only, must never be distributed
+/admin/
+
 # OS junk
 Thumbs.db
 desktop.ini
