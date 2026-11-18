@@ -143,11 +143,12 @@ function checkDiscordPatch() {
 }
 
 // ---------- auto-update from the project's GitHub repo (no git needed on the client) ----------
+const readJsonFile = f => JSON.parse(fs.readFileSync(f, "utf8").replace(/^﻿/, ""));   // tolerate a UTF-8 BOM (e.g. update.json edited in Notepad)
 function readUpdateConfig() {
-    try { return JSON.parse(fs.readFileSync(updateConfigFile, "utf8")); } catch { return null; }
+    try { return readJsonFile(updateConfigFile); } catch { return null; }
 }
 function readUpdateState() {
-    try { return JSON.parse(fs.readFileSync(updateStateFile, "utf8")); } catch { return {}; }
+    try { return readJsonFile(updateStateFile); } catch { return {}; }
 }
 function writeUpdateState(s) {
     try { fs.writeFileSync(updateStateFile, JSON.stringify(s)); } catch { }

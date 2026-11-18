@@ -599,8 +599,9 @@ const safeCall = f => { try { return f(); } catch { return null; } };
 // plus the configured repo it tracks, so the panel can show what you're running.
 function readBeecordVersion() {
     const out = { sha: null, at: null, repo: null, branch: null };
-    try { const s = JSON.parse(fs.readFileSync(path.join(logsDir, "update-state.json"), "utf8")); out.sha = s.sha || null; out.at = s.at || null; } catch { }
-    try { const c = JSON.parse(fs.readFileSync(path.join(beecordDir, "data", "update.json"), "utf8")); if (c && c.owner && c.repo) { out.repo = c.owner + "/" + c.repo; out.branch = c.branch || "main"; } } catch { }
+    const readJson = f => JSON.parse(fs.readFileSync(f, "utf8").replace(/^﻿/, ""));   // tolerate a UTF-8 BOM
+    try { const s = readJson(path.join(logsDir, "update-state.json")); out.sha = s.sha || null; out.at = s.at || null; } catch { }
+    try { const c = readJson(path.join(beecordDir, "data", "update.json")); if (c && c.owner && c.repo) { out.repo = c.owner + "/" + c.repo; out.branch = c.branch || "main"; } } catch { }
     return out;
 }
 
