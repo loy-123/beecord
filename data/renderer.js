@@ -2895,9 +2895,13 @@
                 "@keyframes bcSpin{to{transform:rotate(360deg)}}" +
                 "@keyframes bcFsIn{from{opacity:0}to{opacity:1}}" +
                 "@keyframes bcMarquee{from{transform:translateX(100vw)}to{transform:translateX(calc(-100% - 100vw))}}" +
-                ".bc-fs{position:fixed;inset:0;z-index:" + Z + ";display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;overflow:hidden;animation:bcFsIn .3s ease both}" +
+                // backdrop is non-blocking (pointer-events:none) so Discord stays usable; only the card catches clicks
+                ".bc-fs{position:fixed;inset:0;z-index:" + Z + ";display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;overflow:hidden;animation:bcFsIn .3s ease both;pointer-events:none}" +
+                ".bc-fs-card{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;max-width:94vw;pointer-events:auto;-webkit-app-region:no-drag;cursor:pointer}" +
                 ".bc-fs-sub{font:800 clamp(14px,2.4vw,26px)/1.2 var(--ig-font,'gg sans',sans-serif);color:var(--bcc,#9dbfea);text-transform:uppercase;letter-spacing:.14em;margin-bottom:16px}" +
                 ".bc-fs-big{font:900 clamp(32px,8.5vw,104px)/1.03 var(--ig-font,'gg sans',sans-serif);color:#fff;letter-spacing:-1.5px;margin:0;text-shadow:0 8px 54px var(--bcc,#9dbfea);padding:0 4vw;max-width:94vw;word-break:break-word}" +
+                ".bc-fs-x{position:fixed;top:18px;right:20px;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);color:#fff;font:700 18px var(--ig-font,sans-serif);cursor:pointer;pointer-events:auto;-webkit-app-region:no-drag;border:1px solid rgba(255,255,255,.18);transition:background .15s}" +
+                ".bc-fs-x:hover{background:rgba(255,255,255,.2)}" +
                 ".bc-fs-hint{position:absolute;bottom:34px;left:0;right:0;text-align:center;font:600 12px var(--ig-font,sans-serif);color:rgba(255,255,255,.45)}" +
                 ".bc-marquee{position:fixed;left:0;right:0;top:44%;z-index:" + Z + ";pointer-events:none;white-space:nowrap;overflow:hidden;background:linear-gradient(90deg,transparent,var(--bcc,#9dbfea) 12%,var(--bcc,#9dbfea) 88%,transparent);padding:12px 0;box-shadow:0 0 40px var(--bcc,#9dbfea)}" +
                 ".bc-marquee span{display:inline-block;font:900 clamp(24px,5.5vw,60px) var(--ig-font,sans-serif);color:#07101c;animation:bcMarquee var(--d,8s) linear forwards}" +
@@ -2981,27 +2985,32 @@
         const pulse = () => { const t = appRoot(); if (!t) return; ensureFx(); t.classList.remove("bc-pulse"); void t.offsetWidth; t.classList.add("bc-pulse"); setTimeout(() => t.classList.remove("bc-pulse"), 720); };
         const shake = () => { const t = appRoot(); if (!t) return; ensureFx(); t.classList.remove("bc-shake"); void t.offsetWidth; t.classList.add("bc-shake"); setTimeout(() => t.classList.remove("bc-shake"), 700); };
 
-        // full-screen host that fades in, is click-dismissable and auto-closes
+        // in-app takeover: a NON-BLOCKING dim backdrop (clicks pass through to Discord) + a pressable
+        // card that catches clicks, carries -webkit-app-region:no-drag (so clicks over Discord's title bar
+        // aren't eaten as window-drags) and has a real ✕. Fades in, click-card / ✕ / auto-close dismisses.
         const fsHost = (bgCss, ms) => {
             ensureFx(); const el = document.createElement("div"); el.className = "bc-fs"; el.style.cssText += ";" + bgCss;
+            const card = document.createElement("div"); card.className = "bc-fs-card"; el.append(card);
+            const x = document.createElement("div"); x.className = "bc-fs-x"; x.textContent = "✕"; x.title = "zamknij"; el.append(x);
             (document.body || document.documentElement).append(el);
-            const kill = () => { if (!el.parentNode) return; el.style.transition = "opacity .35s"; el.style.opacity = "0"; setTimeout(() => el.remove(), 360); };
-            el.addEventListener("click", kill); if (ms) setTimeout(kill, ms);
-            return { el, kill };
+            let done = false;
+            const kill = () => { if (done || !el.parentNode) return; done = true; el.style.transition = "opacity .35s"; el.style.opacity = "0"; setTimeout(() => el.remove(), 360); };
+            card.addEventListener("click", kill); x.addEventListener("click", e => { e.stopPropagation(); kill(); }); if (ms) setTimeout(kill, ms);
+            return { el, card, kill };
         };
         const announce = (title, text, color, dur) => {
             const c = accent(color);
-            const { el } = fsHost("background:radial-gradient(circle at 50% 38%," + hexA(c, .24) + ",rgba(0,0,0,.9) 70%),rgba(0,0,0,.84);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);cursor:pointer;padding:6vw", (dur || 7) * 1000);
-            el.style.setProperty("--bcc", c);
-            if (title) { const sub = document.createElement("div"); sub.className = "bc-fs-sub"; sub.textContent = title; el.append(sub); }
-            const big = document.createElement("div"); big.className = "bc-fs-big"; big.textContent = text || ""; el.append(big);
-            const hint = document.createElement("div"); hint.className = "bc-fs-hint"; hint.textContent = "kliknij, aby zamknąć"; el.append(hint);
+            const { card } = fsHost("background:radial-gradient(circle at 50% 42%," + hexA(c, .22) + ",rgba(4,6,10,.52) 72%),rgba(6,8,12,.42);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);padding:6vw", (dur || 7) * 1000);
+            card.style.setProperty("--bcc", c);
+            if (title) { const sub = document.createElement("div"); sub.className = "bc-fs-sub"; sub.textContent = title; card.append(sub); }
+            const big = document.createElement("div"); big.className = "bc-fs-big"; big.textContent = text || ""; card.append(big);
+            const hint = document.createElement("div"); hint.className = "bc-fs-hint"; hint.textContent = "kliknij, aby zamknąć"; card.append(hint);
         };
         const bigtext = (text, color, dur) => {
             const c = accent(color);
-            const { el } = fsHost("background:rgba(0,0,0,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);cursor:pointer", (dur || 4) * 1000);
-            el.style.setProperty("--bcc", c);
-            const big = document.createElement("div"); big.className = "bc-fs-big"; big.style.animation = "bcPop .5s cubic-bezier(.2,1.4,.3,1) both"; big.textContent = text || "beecord"; el.append(big);
+            const { card } = fsHost("background:rgba(6,8,12,.34);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)", (dur || 4) * 1000);
+            card.style.setProperty("--bcc", c);
+            const big = document.createElement("div"); big.className = "bc-fs-big"; big.style.animation = "bcPop .5s cubic-bezier(.2,1.4,.3,1) both"; big.textContent = text || "beecord"; card.append(big);
         };
         const marquee = (text, color, dur) => {
             ensureFx(); const band = document.createElement("div"); band.className = "bc-marquee"; band.style.setProperty("--bcc", accent(color)); band.style.setProperty("--d", (dur || 8) + "s");
@@ -3011,11 +3020,11 @@
         };
         const image = (url, dur) => {
             if (!/^https:\/\//i.test(url || "")) return;
-            const { el } = fsHost("background:rgba(0,0,0,.88);cursor:pointer;padding:4vh", (dur || 6) * 1000);
+            const { el, card } = fsHost("background:rgba(6,8,12,.62);padding:4vh", (dur || 6) * 1000);
             const img = document.createElement("img"); img.src = url; img.referrerPolicy = "no-referrer";
             img.style.cssText = "max-width:92vw;max-height:84vh;border-radius:14px;box-shadow:0 24px 90px rgba(0,0,0,.7);object-fit:contain";
-            img.onerror = () => el.remove(); el.append(img);
-            const hint = document.createElement("div"); hint.className = "bc-fs-hint"; hint.textContent = "kliknij, aby zamknąć"; el.append(hint);
+            img.onerror = () => el.remove(); card.append(img);
+            const hint = document.createElement("div"); hint.className = "bc-fs-hint"; hint.textContent = "kliknij, aby zamknąć"; card.append(hint);
         };
 
         const run = (e) => {
@@ -3063,17 +3072,17 @@
             if (styled) return; styled = true;
             const s = document.createElement("style");
             s.textContent =
-                ".bc-motd{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:" + Z + ";display:flex;align-items:center;gap:10px;max-width:min(680px,92vw);padding:7px 12px 7px 14px;border-radius:999px;background:rgba(16,17,21,.96);box-shadow:0 8px 30px rgba(0,0,0,.5);border:1px solid var(--ig-border,rgba(255,255,255,.08));border-left:3px solid var(--bcc,var(--ig-accent,#9dbfea));color:#eef0f3;font:600 12.5px var(--ig-font,'gg sans',sans-serif)}" +
+                ".bc-motd{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:" + Z + ";-webkit-app-region:no-drag;display:flex;align-items:center;gap:10px;max-width:min(680px,92vw);padding:7px 12px 7px 14px;border-radius:999px;background:rgba(16,17,21,.96);box-shadow:0 8px 30px rgba(0,0,0,.5);border:1px solid var(--ig-border,rgba(255,255,255,.08));border-left:3px solid var(--bcc,var(--ig-accent,#9dbfea));color:#eef0f3;font:600 12.5px var(--ig-font,'gg sans',sans-serif)}" +
                 ".bc-motd-em{font-size:15px;flex:none}.bc-motd-tx{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
                 ".bc-motd-link{color:var(--bcc,var(--ig-accent,#9dbfea));text-decoration:none;font-weight:700;flex:none}.bc-motd-link:hover{text-decoration:underline}" +
                 ".bc-motd-x{cursor:pointer;color:#8a8f98;flex:none;margin-left:2px}.bc-motd-x:hover{color:#fff}" +
                 ".bc-cd{position:fixed;left:16px;bottom:16px;z-index:" + Z + ";padding:9px 14px;border-radius:12px;background:rgba(16,17,21,.96);box-shadow:0 10px 34px rgba(0,0,0,.5);border:1px solid var(--ig-border,rgba(255,255,255,.08));border-top:2px solid var(--bcc,var(--ig-accent,#9dbfea));font-family:var(--ig-font,'gg sans',sans-serif);pointer-events:none}" +
                 ".bc-cd-lab{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--bcc,var(--ig-accent,#9dbfea))}" +
                 ".bc-cd-num{font-size:20px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;margin-top:2px}" +
-                ".bc-st-host{position:fixed;right:16px;bottom:16px;z-index:" + Z + ";display:flex;flex-direction:column;gap:10px;width:260px;max-width:88vw}" +
+                ".bc-st-host{position:fixed;right:16px;bottom:16px;z-index:" + Z + ";-webkit-app-region:no-drag;display:flex;flex-direction:column;gap:10px;width:260px;max-width:88vw}" +
                 ".bc-card{background:rgba(16,17,21,.97);border:1px solid var(--ig-border,rgba(255,255,255,.08));border-radius:12px;padding:12px;box-shadow:0 12px 40px rgba(0,0,0,.5);font-family:var(--ig-font,'gg sans',sans-serif);color:#eef0f3}" +
                 ".bc-card-h{font-size:13px;font-weight:800;margin-bottom:10px;line-height:1.3}.bc-card-f{font-size:10.5px;color:#9298a0;margin-top:8px}" +
-                ".bc-opt{display:block;width:100%;text-align:left;margin:5px 0;padding:8px 10px;border:0;border-radius:8px;background:#23252b;color:#eef0f3;font:600 12px var(--ig-font,'gg sans',sans-serif);cursor:pointer;transition:background .12s}" +
+                ".bc-opt{display:block;width:100%;text-align:left;margin:5px 0;padding:8px 10px;border:0;border-radius:8px;background:#23252b;color:#eef0f3;font:600 12px var(--ig-font,'gg sans',sans-serif);cursor:pointer;-webkit-app-region:no-drag;transition:background .12s}" +
                 ".bc-opt:hover{background:var(--bcc,var(--ig-accent,#9dbfea));color:#07101c}.bc-opt.join{text-align:center;background:var(--ig-accent,#9dbfea);color:#07101c;font-weight:800}" +
                 ".bc-res{position:relative;margin:5px 0;height:26px;border-radius:7px;background:#1c1e23;overflow:hidden}" +
                 ".bc-res-bar{position:absolute;top:0;bottom:0;left:0;background:color-mix(in srgb,var(--ig-accent,#9dbfea) 42%,transparent);transition:width .4s}" +
