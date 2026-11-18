@@ -357,6 +357,43 @@ function loadDiskRanks() {
     return null;
 }
 
+// ---- live ranks sync from the server (Cloudflare Worker); falls back to the bundled ranks.json offline ----
+// Done in the main process so Discord's page CSP can't block it; results are injected + an event fired.
+let ranksSyncWC = null, ranksSyncTimer = null;
+function ranksServerUrl() {
+    try { const r = loadDiskRanks(); if (r && typeof r.server === "string" && /^https?:\/\//.test(r.server)) return r.server.replace(/\/+$/, ""); } catch { }
+    return null;
+}
+async function syncRanksFromServer(wc) {
+    const base = ranksServerUrl();
+    if (!base || typeof fetch !== "function" || !wc || wc.isDestroyed()) return;
+    try {
+        const res = await fetch(base + "/ranks", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data || typeof data !== "object" || !data.ranks) return;
+        await wc.executeJavaScript(`window.__beecordRanks = Object.assign({}, window.__beecordRanks, ${JSON.stringify(data)}); window.dispatchEvent(new CustomEvent("beecord-ranks"));`).catch(() => { });
+    } catch { /* offline: keep local fallback */ }
+}
+function startRanksSync(wc) {
+    ranksSyncWC = wc;
+    syncRanksFromServer(wc);
+    if (!ranksSyncTimer) ranksSyncTimer = setInterval(() => syncRanksFromServer(ranksSyncWC), 3 * 60 * 1000);
+}
+// owner-only write: POST /assign or /remove with the admin key (which stays on the owner's machine)
+async function ranksServerWrite(win, p) {
+    const base = (p && p.server ? String(p.server) : ranksServerUrl() || "").replace(/\/+$/, "");
+    const notify = detail => { try { win.webContents.executeJavaScript(`window.dispatchEvent(new CustomEvent("beecord-ranks-result",{detail:${JSON.stringify(detail)}}));`).catch(() => { }); } catch { } };
+    if (!base || typeof fetch !== "function") { notify({ ok: false, status: 0, out: { error: "no server configured" } }); return; }
+    try {
+        const action = p.action === "remove" ? "remove" : "assign";
+        const res = await fetch(base + "/" + action, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ adminKey: p.adminKey, userId: p.userId, rank: p.rank, uid: p.uid }) });
+        let out = {}; try { out = await res.json(); } catch { }
+        await syncRanksFromServer(win.webContents);
+        notify({ ok: res.ok, status: res.status, out });
+    } catch (e) { log("ranks:write err: " + e.message); notify({ ok: false, status: 0, out: { error: String(e && e.message || e) } }); }
+}
+
 // ---------- themes (Themes plugin) ----------
 // Local themes: %APPDATA%\beecord\themes\*.css (BetterDiscord *.theme.css works too).
 // URL themes: list in themes\urls.json, downloaded copy in themes\.remote\<id>.css.
@@ -723,6 +760,13 @@ app.on("browser-window-created", (_event, win) => {
             } catch (e) { log("save-folders err: " + e.message); }
             return;
         }
+        if (msg.includes("cmd:ranks:write:")) {
+            try {
+                const idx = msg.indexOf("cmd:ranks:write:");
+                ranksServerWrite(win, JSON.parse(msg.slice(idx + "cmd:ranks:write:".length)));
+            } catch (e) { log("ranks:write parse err: " + e.message); }
+            return;
+        }
         if (msg.includes("cmd:log-entry:")) {
             try {
                 const idx = msg.indexOf("cmd:log-entry:");
@@ -787,6 +831,7 @@ app.on("browser-window-created", (_event, win) => {
                 `window.__beecordRanks = ${JSON.stringify(diskRanks)};\n` +
                 `window.__beecordInfo = ${JSON.stringify(info)};`
             ).catch(() => {});
+            startRanksSync(win.webContents);   // pull live ranks from the server + keep them fresh
             const code = fs.readFileSync(path.join(__dirname, "renderer.js"), "utf8");
             await win.webContents.executeJavaScript(code);
             if (safe) {

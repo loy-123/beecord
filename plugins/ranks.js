@@ -60,40 +60,64 @@ function ranksOpenAdmin(api) {
 
     const tiers = () => Object.entries(ranksBuild(getDraft()).ranks).sort((a, b) => (b[1].priority || 0) - (a[1].priority || 0));
 
+    const inp = (ph, type) => { const el = h("input", { placeholder: ph, type: type || "text" }); el.style.cssText = "height:32px;padding:0 10px;box-sizing:border-box;border-radius:8px;border:1px solid var(--ig-border,#202020);background:rgba(0,0,0,.25);color:#dbdee1;font:inherit;outline:none"; el.addEventListener("keydown", e => e.stopPropagation()); return el; };
     const draw = () => {
         const d = getDraft();
         const reg = ranksBuild(d);
         const t = tiers();
-        const idIn = h("input", { placeholder: "Discord user ID" }); idIn.style.cssText = "flex:1;min-width:180px;height:32px;padding:0 10px;box-sizing:border-box;border-radius:8px;border:1px solid var(--ig-border,#202020);background:rgba(0,0,0,.25);color:#dbdee1;font:inherit;outline:none"; idIn.addEventListener("keydown", e => e.stopPropagation());
-        const rankSel = h("select"); rankSel.style.cssText = "height:32px;padding:0 8px;border-radius:8px;border:1px solid var(--ig-border,#202020);background:var(--ig-input,#1b1b1b);color:inherit;font:inherit"; for (const [id, r] of t) { const o = h("option", { value: id }, r.label); rankSel.append(o); }
-        const uidIn = h("input", { placeholder: "Custom UID (optional)" }); uidIn.style.cssText = "width:150px;height:32px;padding:0 10px;box-sizing:border-box;border-radius:8px;border:1px solid var(--ig-border,#202020);background:rgba(0,0,0,.25);color:#dbdee1;font:inherit;outline:none"; uidIn.addEventListener("keydown", e => e.stopPropagation());
+        const server = ((typeof window !== "undefined" && window.__beecordRanks && window.__beecordRanks.server) || api.settings.get("serverUrl", "") || "").trim();
+        const adminKey = api.settings.get("adminKey", "");
+        const useServer = !!(server && adminKey);
+        const sendWrite = payload => { try { api.command("ranks:write:" + JSON.stringify(Object.assign({ server, adminKey }, payload))); } catch { } };
+
+        // ---- server status + admin key ----
+        const dotC = useServer ? "#23a55a" : server ? "#e8c478" : "#80848e";
+        const keyIn = inp("Admin key (stored only on this PC)", "password"); keyIn.style.flex = "1"; keyIn.style.minWidth = "200px"; keyIn.value = adminKey;
+        keyIn.addEventListener("input", () => { api.settings.set("adminKey", keyIn.value); });
+        keyIn.addEventListener("change", () => draw());
+        const serverLine = h("div", { style: "display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid var(--ig-border,#202020);margin-bottom:10px;font-size:11.5px" },
+            h("i", { style: "width:8px;height:8px;border-radius:50%;flex:none;background:" + dotC + ";box-shadow:0 0 7px " + dotC + "88" }),
+            h("span", { style: "flex:1;color:#dbdee1" }, server ? (useServer ? "Server connected — assignments save live for everyone" : "Server set — enter your admin key to assign") : "No server — local preview mode (push ranks.json to share)"),
+            server ? h("span", { style: "color:#6c7280;font-family:var(--ig-font,monospace);font-size:10px;max-width:150px;overflow:hidden;text-overflow:ellipsis" }, server.replace(/^https?:\/\//, "")) : null);
+
+        // ---- assign row ----
+        const idIn = inp("Discord user ID"); idIn.style.flex = "1"; idIn.style.minWidth = "170px";
+        const rankSel = h("select"); rankSel.style.cssText = "height:32px;padding:0 8px;border-radius:8px;border:1px solid var(--ig-border,#202020);background:var(--ig-input,#1b1b1b);color:inherit;font:inherit"; for (const [id, r] of t) rankSel.append(h("option", { value: id }, r.label));
+        const uidIn = inp("Custom UID (optional)"); uidIn.style.width = "150px";
         const addBtn = mkBtn("Assign", () => {
             const id = String(idIn.value || "").trim();
             if (!/^\d{15,22}$/.test(id)) { api.toast("Enter a valid Discord user ID", "#e8c478", 2200); return; }
-            const dd = getDraft(); dd.users[id] = Object.assign({ rank: rankSel.value }, uidIn.value.trim() ? { uid: uidIn.value.trim() } : {}); api.settings.set("draft", dd); draw();
+            const uid = uidIn.value.trim() || undefined;
+            if (useServer) { sendWrite({ action: "assign", userId: id, rank: rankSel.value, uid }); api.toast("Saving on the server…", "#9dbfea", 1400); idIn.value = ""; uidIn.value = ""; }
+            else { const dd = getDraft(); dd.users[id] = Object.assign({ rank: rankSel.value }, uid ? { uid } : {}); api.settings.set("draft", dd); draw(); }
         });
 
         const rows = Object.entries(reg.users).filter(([, u]) => !u._hidden).map(([id, u]) => {
             const r = reg.ranks[u.rank] || { label: u.rank || "?", color: "#949ba4" };
             const inDraft = !!(d.users && d.users[id]);
-            const del = mkBtn(inDraft ? "Remove" : "Hide", () => { const dd = getDraft(); if (inDraft) delete dd.users[id]; else dd.users[id] = { rank: "member", _hidden: true }; api.settings.set("draft", dd); draw(); }, true);
+            const del = mkBtn("Remove", () => {
+                if (useServer) { sendWrite({ action: "remove", userId: id }); api.toast("Removing…", "#9dbfea", 1200); }
+                else { const dd = getDraft(); if (inDraft) delete dd.users[id]; else dd.users[id] = { rank: "member", _hidden: true }; api.settings.set("draft", dd); draw(); }
+            }, true);
             del.style.height = "26px";
             return h("div", { style: "display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--ig-child-border,#161616)" },
                 chip(r.label, r.color, r.glow),
                 h("span", { style: "flex:1;min-width:0;font-family:var(--ig-font,monospace);font-size:12px;color:#dbdee1;overflow:hidden;text-overflow:ellipsis" }, id),
-                h("span", { style: "color:#949ba4;font-size:11px;white-space:nowrap" }, (u.uid || ranksDeriveUid(id)) + (inDraft ? "  · draft" : "  · shared")),
+                h("span", { style: "color:#949ba4;font-size:11px;white-space:nowrap" }, (u.uid || ranksDeriveUid(id)) + (useServer ? "" : inDraft ? "  · draft" : "  · shared")),
                 del);
         });
 
-        const copyBtn = mkBtn("Copy ranks.json for the repo", async () => {
+        const copyBtn = mkBtn(useServer ? "Copy offline fallback (ranks.json)" : "Copy ranks.json for the repo", async () => {
             const r = ranksBuild(getDraft());
-            const out = { _comment: "beecord ranks registry — commit this as data/ranks.json and push to share it.", ranks: r.ranks, users: Object.fromEntries(Object.entries(r.users).filter(([, u]) => !u._hidden)) };
-            try { await navigator.clipboard.writeText(JSON.stringify(out, null, 2)); copyBtn.textContent = "Copied ✓ — commit as data/ranks.json"; setTimeout(() => { copyBtn.textContent = "Copy ranks.json for the repo"; }, 2800); } catch { api.toast("Couldn't copy", "#f23f43", 1800); }
+            const out = { _comment: "beecord ranks registry (offline fallback).", server: server || undefined, ranks: r.ranks, users: Object.fromEntries(Object.entries(r.users).filter(([, u]) => !u._hidden)) };
+            try { await navigator.clipboard.writeText(JSON.stringify(out, null, 2)); copyBtn.textContent = "Copied ✓"; setTimeout(() => draw(), 2200); } catch { api.toast("Couldn't copy", "#f23f43", 1800); }
         });
 
-        const sub = (title) => h("div", { style: "font-size:10.5px;font-weight:700;letter-spacing:.04em;color:var(--ig-accent,#9dbfea);text-transform:uppercase;margin:4px 0 8px" }, title);
+        const sub = title => h("div", { style: "font-size:10.5px;font-weight:700;letter-spacing:.04em;color:var(--ig-accent,#9dbfea);text-transform:uppercase;margin:4px 0 8px" }, title);
         body.replaceChildren(
-            h("div", { style: "font-size:11.5px;color:#949ba4;margin-bottom:12px;line-height:1.5" }, "This panel is only visible to you (the owner) on this machine. Changes are a local preview — press “Copy ranks.json” and commit it to the repo to share ranks with everyone."),
+            h("div", { style: "font-size:11.5px;color:#949ba4;margin-bottom:12px;line-height:1.5" }, "Only you (the owner) see this panel. With the server connected, assignments save live for everyone and UIDs are kept unique. Your admin key is stored only on this machine."),
+            serverLine,
+            server ? h("div", { style: "display:flex;gap:8px;margin-bottom:12px" }, keyIn) : null,
             sub("Assign rank & UID"),
             h("div", { style: "display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px" }, idIn, rankSel, uidIn, addBtn),
             sub("Current assignments"),
@@ -183,6 +207,15 @@ function ranksOpenAdmin(api) {
             }
             if (ranksAdminWrap && e.key === "Escape" && !e.ctrlKey) { e.preventDefault(); ranksAdminWrap.remove(); ranksAdminWrap = null; }
         }, true);
+
+        // live updates from the server (loader fetches /ranks and fires these events)
+        const forceRescan = () => { cache.key = null; for (const el of document.querySelectorAll('[class*="username_"]')) el.__bcAuthor = undefined; scan(); };
+        api.on(window, "beecord-ranks", forceRescan);
+        api.on(window, "beecord-ranks-result", e => {
+            const d = (e && e.detail) || {};
+            if (d.ok) { api.toast("Saved on the server", "#80d09c", 1600); if (ranksAdminWrap) ranksOpenAdmin(api); }
+            else api.toast("Server: " + ((d.out && d.out.error) || ("error " + (d.status || "?"))), "#f23f43", 2800);
+        });
 
         api.cleanup(() => {
             if (ranksAdminWrap) { ranksAdminWrap.remove(); ranksAdminWrap = null; }

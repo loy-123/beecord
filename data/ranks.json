@@ -1,5 +1,6 @@
 {
-  "_comment": "beecord ranks registry. This file is distributed to EVERY client by the repo auto-updater, so what you put here (after pushing to the repo) is what everyone sees. Assign ranks/UIDs in the Ranks plugin settings, then push data/ranks.json to the repo. Keys under 'users' are Discord user IDs.",
+  "_comment": "beecord ranks registry. 'server' is the live ranks API (Cloudflare Worker): clients fetch it for real-time ranks/UIDs; the entries below are only the offline fallback. Assign ranks in the owner admin panel (Ctrl+Shift+A) — with the server set, assignments are saved server-side (unique UIDs enforced).",
+  "server": "https://beecord-ranks.stxrdy123.workers.dev",
   "ranks": {
     "owner":     { "label": "OWNER",     "color": "#f0888a", "glow": true,  "priority": 100 },
     "dev":       { "label": "DEV",       "color": "#f2a9bc", "glow": true,  "priority": 95 },
