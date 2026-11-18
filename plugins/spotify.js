@@ -63,9 +63,10 @@ let refreshSpotify = null;
         .bsp-roll-svg{width:13px;height:13px;fill:currentColor;transition:transform .25s cubic-bezier(.3,1.5,.5,1)}
         .bsp-card.bsp-collapsed .bsp-roll-svg{transform:rotate(180deg)}
         .bsp-card.bsp-collapsed{padding:6px 10px 6px 10px;margin-top:4px;cursor:pointer}
-        .bsp-card.bsp-collapsed .bsp-ctl,
-        .bsp-card.bsp-collapsed .bsp-prog,
-        .bsp-card.bsp-collapsed .bsp-vol{display:none !important}
+        /* collapsible body: animate its height (grid 1fr->0fr) + fade instead of display:none snapping */
+        .bsp-body{display:grid;grid-template-rows:1fr;transition:grid-template-rows .32s cubic-bezier(.33,0,.2,1),opacity .24s ease .04s}
+        .bsp-body-inner{display:flex;flex-direction:column;overflow:hidden;min-height:0}
+        .bsp-card.bsp-collapsed .bsp-body{grid-template-rows:0fr;opacity:0;transition:grid-template-rows .32s cubic-bezier(.33,0,.2,1),opacity .16s ease}
         .bsp-card.bsp-collapsed .bsp-row{gap:8px;padding-top:6px}
         .bsp-card.bsp-collapsed .bsp-art{width:24px;height:24px;border-radius:5px}
         .bsp-card.bsp-collapsed .bsp-art svg{width:13px;height:13px}
@@ -77,17 +78,18 @@ let refreshSpotify = null;
         .bsp-card .bsp-btn:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
         .bsp-bg{position:absolute;inset:-24px;background-size:cover;background-position:center;filter:blur(26px) saturate(1.5);opacity:.38;pointer-events:none;transition:opacity .5s}
         .bsp-card.noart .bsp-bg{opacity:0}
-        .bsp-row{position:relative;display:flex;align-items:center;gap:10px}
+        .bsp-row{position:relative;display:flex;align-items:center;gap:10px;transition:gap .28s ease,padding .28s ease}
         .bsp-art{width:44px;height:44px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center;color:var(--ac);
-            background:rgba(127,127,127,.28) center/cover no-repeat;box-shadow:0 4px 14px rgba(0,0,0,.35);transition:transform .3s cubic-bezier(.3,1.5,.5,1)}
+            background:rgba(127,127,127,.28) center/cover no-repeat;box-shadow:0 4px 14px rgba(0,0,0,.35);
+            transition:transform .3s cubic-bezier(.3,1.5,.5,1),width .3s cubic-bezier(.33,0,.2,1),height .3s cubic-bezier(.33,0,.2,1),border-radius .3s ease}
         .bsp-art svg{width:22px;height:22px;fill:currentColor}
         .bsp-card:not(.noart) .bsp-art svg{display:none}
         .bsp-card.playing .bsp-art{animation:bsp-pulse 3.2s ease-in-out infinite}
         .bsp-text{flex:1;min-width:0}
-        .bsp-marq{overflow:hidden;white-space:nowrap;font-weight:700;font-size:13.5px;line-height:18px;color:var(--header-primary,#f2f3f5)}
+        .bsp-marq{overflow:hidden;white-space:nowrap;font-weight:700;font-size:13.5px;line-height:18px;color:var(--header-primary,#f2f3f5);transition:font-size .26s ease,line-height .26s ease}
         .bsp-title{display:inline-block}
         .bsp-marq.scroll .bsp-title{animation:bsp-marq var(--dur,8s) ease-in-out infinite alternate}
-        .bsp-artist{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px;line-height:16px;color:var(--text-muted,#949ba4)}
+        .bsp-artist{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px;line-height:16px;color:var(--text-muted,#949ba4);transition:font-size .26s ease,line-height .26s ease}
         .bsp-eq{display:flex;align-items:flex-end;gap:2px;width:15px;height:14px;flex:none;opacity:.9}
         .bsp-eq i{flex:1;height:22%;border-radius:1px;background:var(--ac);transition:height .3s}
         .bsp-card.playing .bsp-eq i{animation:bsp-eq .9s ease-in-out infinite alternate}
@@ -412,7 +414,9 @@ let refreshSpotify = null;
             render();
         });
 
-        const card = h("div", { class: "bsp-card noart idle", "data-bsp": "1" }, els.rollBtn, els.bg, els.row, els.ctl, els.prog, els.vol);
+        els.bodyInner = h("div", { class: "bsp-body-inner" }, els.ctl, els.prog, els.vol);
+        els.body = h("div", { class: "bsp-body" }, els.bodyInner);
+        const card = h("div", { class: "bsp-card noart idle", "data-bsp": "1" }, els.rollBtn, els.bg, els.row, els.body);
         card.style.display = "none";
         card.addEventListener("click", e => {
             if (isCollapsed && !e.target.closest("button")) {
@@ -471,7 +475,7 @@ let refreshSpotify = null;
 
             if (lastLayoutCompact !== compact) {   // compact puts the buttons on the cover row
                 lastLayoutCompact = compact;
-                if (compact) els.row.insertBefore(els.ctl, els.eq); else els.row.after(els.ctl);
+                if (compact) els.row.insertBefore(els.ctl, els.eq); else els.bodyInner.prepend(els.ctl);
             }
 
             const title = st.running ? (st.title || "Nothing playing") : "Spotify isn't running";
