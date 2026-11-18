@@ -123,8 +123,8 @@ export default {
         if (req.method === "GET" && url.pathname === "/banned") {
             const hwid = (url.searchParams.get("hwid") || "").toLowerCase();
             if (!/^[a-f0-9]{16,64}$/.test(hwid)) return json({ banned: false });
-            let banned = false; try { banned = (await env.RANKS.get("ban:" + hwid)) !== null; } catch { }
-            return json({ banned });
+            try { const s = await env.RANKS.get("ban:" + hwid); if (s) { const b = JSON.parse(s); return json({ banned: true, reason: String(b.reason || "") }); } } catch { }
+            return json({ banned: false });
         }
 
         // ---- public interactions: vote in a poll / join a giveaway (no admin key; one per user) ----

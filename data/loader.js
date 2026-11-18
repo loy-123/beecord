@@ -390,20 +390,39 @@ function machineHwid() {
     try { cachedHwid = crypto.createHash("sha256").update("beecord-hwid:" + seed).digest("hex").slice(0, 32); } catch { cachedHwid = ""; }
     return cachedHwid;
 }
-// Ask the server whether THIS machine's HWID is banned. Fail-open (returns false) on any error or
-// timeout so a network hiccup or an offline user never loses beecord by accident.
-async function isHwidBanned() {
+// Ask the server whether THIS machine's HWID is banned. Returns {banned:true,reason} or null.
+// Fail-open (returns null) on any error or timeout so a network hiccup or an offline user never
+// loses beecord — or gets Discord closed — by accident.
+async function checkHwidBan() {
     const base = ranksServerUrl();
     const hwid = machineHwid();
-    if (!base || !hwid || typeof fetch !== "function") return false;
+    if (!base || !hwid || typeof fetch !== "function") return null;
     try {
         const opts = { cache: "no-store" };
         try { opts.signal = AbortSignal.timeout(5000); } catch { }
         const res = await fetch(base + "/banned?hwid=" + encodeURIComponent(hwid), opts);
-        if (!res.ok) return false;
+        if (!res.ok) return null;
         const d = await res.json();
-        return !!(d && d.banned);
-    } catch { return false; }
+        return (d && d.banned) ? { banned: true, reason: String(d.reason || "") } : null;
+    } catch { return null; }
+}
+// Full-screen "access blocked" screen with a live countdown, injected into the page. After it
+// finishes the loader closes Discord (see dom-ready). secs = countdown length; reason = owner's note.
+function banScreenJs(secs, reason) {
+    const msg = reason ? reason : "Twoje urządzenie zostało zbanowane w beecord.";
+    return `(function(){try{
+        if(document.getElementById('beecord-banned-screen'))return;
+        var left=${secs|0};
+        var ov=document.createElement('div');ov.id='beecord-banned-screen';
+        ov.style.cssText='position:fixed;inset:0;z-index:2147483646;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:radial-gradient(circle at 50% 34%,#2a0e12,#0b0608 72%);color:#f3d6da;font-family:gg sans,sans-serif;padding:6vw;-webkit-app-region:no-drag;user-select:none';
+        var h=document.createElement('div');h.textContent='⛔ Dostęp zablokowany';h.style.cssText='font:900 clamp(26px,6vw,64px) gg sans,sans-serif;color:#fff;letter-spacing:-1px;text-shadow:0 8px 40px #b0313f';ov.appendChild(h);
+        var p=document.createElement('div');p.textContent=${JSON.stringify(msg)};p.style.cssText='margin-top:14px;font:600 clamp(13px,2.2vw,20px) gg sans,sans-serif;max-width:720px;color:#e7b9c0;line-height:1.45';ov.appendChild(p);
+        var lbl=document.createElement('div');lbl.textContent='Discord zostanie zamknięty za…';lbl.style.cssText='margin-top:30px;font:800 14px gg sans,sans-serif;color:#f3d6da;text-transform:uppercase;letter-spacing:.08em';ov.appendChild(lbl);
+        var n=document.createElement('div');n.style.cssText='font:900 clamp(48px,11vw,120px) gg sans,sans-serif;color:#ff5b6e;font-variant-numeric:tabular-nums;text-shadow:0 0 34px #ff5b6e66;margin-top:4px';ov.appendChild(n);
+        n.textContent=left;
+        (document.body||document.documentElement).appendChild(ov);
+        var t=setInterval(function(){left--;if(left<=0){clearInterval(t);n.textContent='0';lbl.textContent='Zamykanie…';}else{n.textContent=left;}},1000);
+    }catch(e){}})();`;
 }
 async function syncRanksFromServer(wc) {
     const base = ranksServerUrl();
@@ -891,11 +910,17 @@ app.on("browser-window-created", (_event, win) => {
             // Discord's in-game overlay is a separate discord.com webContents. Don't inject there, or beecord's
             // HUDs (Spotify card, clock, etc.) render on top of the game.
             if (/(^|\/|\.)overlay(\/|$|\?|#|\.)/i.test(url)) { log("skipping Discord overlay: " + url); return; }
-            // HWID ban: if this machine is banned by the owner, do not inject beecord at all (leave plain
-            // Discord working) and show a small notice. Fail-open on network error (see isHwidBanned).
-            if (await isHwidBanned()) {
-                log("HWID banned — beecord disabled on this machine");
-                try { await win.webContents.executeJavaScript(`(function(){try{if(document.getElementById('beecord-banned'))return;var d=document.createElement('div');d.id='beecord-banned';d.style.cssText='position:fixed;left:16px;bottom:16px;z-index:2147483600;max-width:320px;padding:12px 14px;border-radius:12px;background:#1b0f12;border:1px solid #5b2b33;color:#f3d6da;font:600 12.5px sans-serif;box-shadow:0 10px 34px rgba(0,0,0,.5)';d.textContent='beecord jest wyłączony na tym urządzeniu.';(document.body||document.documentElement).appendChild(d);}catch(e){}})();`).catch(() => { }); } catch { }
+            // HWID ban: if this machine is banned by the owner, show a full-screen notice with a countdown,
+            // inject nothing, and CLOSE Discord when the countdown ends. Fail-open on network error (checkHwidBan).
+            const ban = await checkHwidBan();
+            if (ban && ban.banned) {
+                const secs = 10;
+                log("HWID banned — showing countdown, Discord will close in " + secs + "s");
+                try { await win.webContents.executeJavaScript(banScreenJs(secs, ban.reason)).catch(() => { }); } catch { }
+                setTimeout(() => {
+                    try { app.quit(); } catch { }
+                    setTimeout(() => { try { app.exit(0); } catch { } }, 1500);   // force-close if Discord traps quit
+                }, secs * 1000 + 700);
                 return;
             }
             log("injecting into " + url);
