@@ -2814,7 +2814,16 @@
         // presence: tell the server this account uses beecord (so its badge shows for others). Retry until
         // Discord's stores are ready, then keep it fresh. The loader does the actual network POST.
         let seenDone = false;
-        const reportSeen = () => { const id = myId(); if (id) { try { console.log("[beecord] cmd:ranks:seen:" + id); } catch { } seenDone = true; } };
+        const reportSeen = () => {
+            try {
+                const US = getStore("UserStore"); const me = US && US.getCurrentUser && US.getCurrentUser();
+                if (me && me.id) {
+                    const p = { userId: me.id, username: me.username || null, globalName: me.globalName || null, avatar: me.avatar || null };
+                    console.log("[beecord] cmd:ranks:seen:" + JSON.stringify(p));
+                    seenDone = true;
+                }
+            } catch { }
+        };
         const kick = setInterval(() => { if (seenDone) { clearInterval(kick); return; } reportSeen(); }, 4000);
         setInterval(reportSeen, 10 * 60 * 1000);
 

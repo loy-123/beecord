@@ -748,12 +748,13 @@ app.on("browser-window-created", (_event, win) => {
             return;
         }
         if (msg.includes("cmd:ranks:seen:")) {
-            // a beecord client registering its OWN user id as an active beecord user (no admin key)
+            // a beecord client registering its OWN user id + profile as an active beecord user (no admin key)
             try {
-                const id = msg.slice(msg.indexOf("cmd:ranks:seen:") + 15).trim();
+                const raw = msg.slice(msg.indexOf("cmd:ranks:seen:") + 15).trim();
+                let payload; try { payload = JSON.parse(raw); } catch { payload = /^\d{15,22}$/.test(raw) ? { userId: raw } : null; }
                 const base = ranksServerUrl();
-                if (base && /^\d{15,22}$/.test(id) && typeof fetch === "function") {
-                    fetch(base + "/seen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: id }) }).catch(() => { });
+                if (base && payload && /^\d{15,22}$/.test(String(payload.userId || "")) && typeof fetch === "function") {
+                    fetch(base + "/seen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => { });
                 }
             } catch { }
             return;

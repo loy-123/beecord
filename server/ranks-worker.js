@@ -64,12 +64,20 @@ export default {
             return json({ uid, available: !!uid && !uidTaken(reg, uid, null) });
         }
 
-        // ---- presence: a beecord client registers its OWN user id (no admin key; cosmetic). Auto-expires. ----
+        // ---- presence: a beecord client registers its OWN user id + profile (no admin key; cosmetic). ----
+        // p:<id> = recently-active set (14d, timestamp in metadata); a:<id> = ever-seen (permanent, "downloads");
+        // u:<id> = {username, globalName, avatar} so the admin can show profiles instead of raw ids.
         if (req.method === "POST" && url.pathname === "/seen") {
             let body; try { body = await req.json(); } catch { return json({ error: "bad json" }, 400); }
             const id = String(body.userId || "").trim();
             if (!/^\d{15,22}$/.test(id)) return json({ error: "invalid userId" }, 400);
-            try { await env.RANKS.put("p:" + id, "1", { expirationTtl: 1209600 }); } catch { } // 14 days
+            try { await env.RANKS.put("p:" + id, "1", { expirationTtl: 1209600, metadata: { t: Date.now() } }); } catch { }
+            try { await env.RANKS.put("a:" + id, "1"); } catch { }
+            const prof = {};
+            if (body.username) prof.username = String(body.username).slice(0, 40);
+            if (body.globalName) prof.globalName = String(body.globalName).slice(0, 40);
+            if (body.avatar) prof.avatar = String(body.avatar).slice(0, 64);
+            if (Object.keys(prof).length) { try { await env.RANKS.put("u:" + id, JSON.stringify(prof)); } catch { } }
             return json({ ok: true });
         }
 
@@ -78,6 +86,19 @@ export default {
             let body;
             try { body = await req.json(); } catch { return json({ error: "bad json" }, 400); }
             if (!env.ADMIN_KEY || body.adminKey !== env.ADMIN_KEY) return json({ error: "unauthorized" }, 401);
+
+            if (url.pathname === "/stats") {
+                let total = 0, active = 0, activeNow = 0; const cutoff = Date.now() - 15 * 60 * 1000;
+                try { let c; do { const l = await env.RANKS.list({ prefix: "a:", cursor: c }); total += (l.keys || []).length; c = l.list_complete ? null : l.cursor; } while (c); } catch { }
+                try { let c; do { const l = await env.RANKS.list({ prefix: "p:", cursor: c }); for (const k of (l.keys || [])) { active++; const t = k.metadata && k.metadata.t; if (t && t > cutoff) activeNow++; } c = l.list_complete ? null : l.cursor; } while (c); } catch { }
+                return json({ total, active, activeNow });
+            }
+            if (url.pathname === "/profiles") {
+                const ids = (Array.isArray(body.ids) ? body.ids : []).map(s => String(s).trim()).filter(s => /^\d{15,22}$/.test(s)).slice(0, 300);
+                const out = {};
+                await Promise.all(ids.map(async id => { try { const s = await env.RANKS.get("u:" + id); if (s) out[id] = JSON.parse(s); } catch { } }));
+                return json(out);
+            }
 
             if (url.pathname === "/assign") {
                 const userId = String(body.userId || "").trim();
