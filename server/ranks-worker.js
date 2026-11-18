@@ -16,6 +16,10 @@
 //   GET  /uid/check?uid=NAME     -> { uid, available }              (public)
 //   POST /assign  {adminKey,userId,rank,uid?}  -> assigns (unique UID enforced)   (owner only)
 //   POST /remove  {adminKey,userId}            -> removes                          (owner only)
+//   GET  /banned?hwid=HASH      -> { banned }                                     (public, clients check it)
+//   POST /hwid/ban   {adminKey,userId?|hwid?,reason?} -> ban a device             (owner only)
+//   POST /hwid/unban {adminKey,userId?|hwid?}         -> unban a device           (owner only)
+//   POST /hwid/list  {adminKey}                -> { bans:[{hwid,userId,reason,at}] } (owner only)
 //   POST /rank    {adminKey,id,label?,color?,glow?,priority?,delete?} -> edit a tier (owner only)
 //   GET  /state                 -> {motd?,poll?,giveaway?,countdown?,accent?}  (public, clients poll it)
 //   POST /poll/vote     {userId,opt}      -> vote once in the current poll       (public)
@@ -104,7 +108,23 @@ export default {
             if (body.globalName) prof.globalName = String(body.globalName).slice(0, 40);
             if (body.avatar) prof.avatar = String(body.avatar).slice(0, 64);
             if (Object.keys(prof).length) { try { await env.RANKS.put("u:" + id, JSON.stringify(prof)); } catch { } }
+            // optional HWID (hashed on the client): map userId<->hwid so the owner can ban a user's device.
+            const hwid = String(body.hwid || "").toLowerCase();
+            if (/^[a-f0-9]{16,64}$/.test(hwid)) {
+                try { await env.RANKS.put("hw:" + id, hwid); } catch { }
+                try { await env.RANKS.put("hu:" + hwid, id); } catch { }
+                let banned = false; try { banned = (await env.RANKS.get("ban:" + hwid)) !== null; } catch { }
+                return json({ ok: true, banned });
+            }
             return json({ ok: true });
+        }
+
+        // ---- public HWID ban check: a client asks whether THIS machine is banned (no admin key) ----
+        if (req.method === "GET" && url.pathname === "/banned") {
+            const hwid = (url.searchParams.get("hwid") || "").toLowerCase();
+            if (!/^[a-f0-9]{16,64}$/.test(hwid)) return json({ banned: false });
+            let banned = false; try { banned = (await env.RANKS.get("ban:" + hwid)) !== null; } catch { }
+            return json({ banned });
         }
 
         // ---- public interactions: vote in a poll / join a giveaway (no admin key; one per user) ----
@@ -173,6 +193,31 @@ export default {
                 delete reg.users[userId];
                 await save(env, reg);
                 return json({ ok: true, userId });
+            }
+            // ---- HWID bans (owner-only). Ban by Discord id (resolved to the device's hwid) or a raw hwid. ----
+            if (url.pathname === "/hwid/ban") {
+                let hwid = String(body.hwid || "").toLowerCase().trim();
+                const userId = String(body.userId || "").trim();
+                if (!hwid && /^\d{15,22}$/.test(userId)) { try { hwid = String((await env.RANKS.get("hw:" + userId)) || "").toLowerCase(); } catch { } }
+                if (!/^[a-f0-9]{16,64}$/.test(hwid)) return json({ error: "no hwid — the user must have opened beecord at least once, or paste a raw HWID" }, 400);
+                let who = userId; if (!who) { try { who = (await env.RANKS.get("hu:" + hwid)) || ""; } catch { } }
+                const rec = { hwid, userId: who, reason: String(body.reason || "").slice(0, 200), at: Date.now() };
+                await env.RANKS.put("ban:" + hwid, JSON.stringify(rec));
+                return json({ ok: true, ban: rec });
+            }
+            if (url.pathname === "/hwid/unban") {
+                let hwid = String(body.hwid || "").toLowerCase().trim();
+                const userId = String(body.userId || "").trim();
+                if (!hwid && /^\d{15,22}$/.test(userId)) { try { hwid = String((await env.RANKS.get("hw:" + userId)) || "").toLowerCase(); } catch { } }
+                if (!/^[a-f0-9]{16,64}$/.test(hwid)) return json({ error: "no hwid to unban" }, 400);
+                try { await env.RANKS.delete("ban:" + hwid); } catch { }
+                return json({ ok: true, hwid });
+            }
+            if (url.pathname === "/hwid/list") {
+                const out = [];
+                try { let c; do { const l = await env.RANKS.list({ prefix: "ban:", cursor: c }); for (const k of (l.keys || [])) { try { const s = await env.RANKS.get(k.name); if (s) out.push(JSON.parse(s)); } catch { } } c = l.list_complete ? null : l.cursor; } while (c); } catch { }
+                out.sort((a, b) => (b.at || 0) - (a.at || 0));
+                return json({ bans: out });
             }
             if (url.pathname === "/motd") {
                 if (body.clear) { try { await env.RANKS.delete("motd"); } catch { } return json({ ok: true, cleared: true }); }

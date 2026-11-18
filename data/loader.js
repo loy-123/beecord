@@ -364,6 +364,47 @@ function ranksServerUrl() {
     try { const r = loadDiskRanks(); if (r && typeof r.server === "string" && /^https?:\/\//.test(r.server)) return r.server.replace(/\/+$/, ""); } catch { }
     return null;
 }
+
+// ---- HWID (per-machine access control for the owner's own mod) ----
+// A stable, hashed id for this machine. Seeded from the Windows MachineGuid (falls back to
+// hostname + non-internal MAC addresses). Only the SHA-256 hash ever leaves the machine — the raw
+// MachineGuid is never sent or stored — so it bans a device without being a reversible fingerprint.
+let cachedHwid = null;
+function machineHwid() {
+    if (cachedHwid) return cachedHwid;
+    let seed = "";
+    try {
+        const out = require("child_process").execSync('reg query "HKLM\\SOFTWARE\\Microsoft\\Cryptography" /v MachineGuid', { windowsHide: true, timeout: 4000 }).toString();
+        const m = out.match(/MachineGuid\s+REG_SZ\s+([A-Fa-f0-9-]+)/i);
+        if (m) seed = m[1];
+    } catch { }
+    if (!seed) {
+        try {
+            const os = require("os");
+            const ifs = os.networkInterfaces(); const macs = [];
+            for (const k of Object.keys(ifs || {})) for (const ni of (ifs[k] || [])) if (ni.mac && ni.mac !== "00:00:00:00:00:00" && !ni.internal) macs.push(ni.mac);
+            seed = os.hostname() + "|" + macs.sort().join(",");
+        } catch { }
+    }
+    if (!seed) seed = "unknown";
+    try { cachedHwid = crypto.createHash("sha256").update("beecord-hwid:" + seed).digest("hex").slice(0, 32); } catch { cachedHwid = ""; }
+    return cachedHwid;
+}
+// Ask the server whether THIS machine's HWID is banned. Fail-open (returns false) on any error or
+// timeout so a network hiccup or an offline user never loses beecord by accident.
+async function isHwidBanned() {
+    const base = ranksServerUrl();
+    const hwid = machineHwid();
+    if (!base || !hwid || typeof fetch !== "function") return false;
+    try {
+        const opts = { cache: "no-store" };
+        try { opts.signal = AbortSignal.timeout(5000); } catch { }
+        const res = await fetch(base + "/banned?hwid=" + encodeURIComponent(hwid), opts);
+        if (!res.ok) return false;
+        const d = await res.json();
+        return !!(d && d.banned);
+    } catch { return false; }
+}
 async function syncRanksFromServer(wc) {
     const base = ranksServerUrl();
     if (!base || typeof fetch !== "function" || !wc || wc.isDestroyed()) return;
@@ -798,6 +839,7 @@ app.on("browser-window-created", (_event, win) => {
                 let payload; try { payload = JSON.parse(raw); } catch { payload = /^\d{15,22}$/.test(raw) ? { userId: raw } : null; }
                 const base = ranksServerUrl();
                 if (base && payload && /^\d{15,22}$/.test(String(payload.userId || "")) && typeof fetch === "function") {
+                    try { payload.hwid = machineHwid(); } catch { }   // so the owner can ban this user's device
                     fetch(base + "/seen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => { });
                 }
             } catch { }
@@ -849,6 +891,13 @@ app.on("browser-window-created", (_event, win) => {
             // Discord's in-game overlay is a separate discord.com webContents. Don't inject there, or beecord's
             // HUDs (Spotify card, clock, etc.) render on top of the game.
             if (/(^|\/|\.)overlay(\/|$|\?|#|\.)/i.test(url)) { log("skipping Discord overlay: " + url); return; }
+            // HWID ban: if this machine is banned by the owner, do not inject beecord at all (leave plain
+            // Discord working) and show a small notice. Fail-open on network error (see isHwidBanned).
+            if (await isHwidBanned()) {
+                log("HWID banned — beecord disabled on this machine");
+                try { await win.webContents.executeJavaScript(`(function(){try{if(document.getElementById('beecord-banned'))return;var d=document.createElement('div');d.id='beecord-banned';d.style.cssText='position:fixed;left:16px;bottom:16px;z-index:2147483600;max-width:320px;padding:12px 14px;border-radius:12px;background:#1b0f12;border:1px solid #5b2b33;color:#f3d6da;font:600 12.5px sans-serif;box-shadow:0 10px 34px rgba(0,0,0,.5)';d.textContent='beecord jest wyłączony na tym urządzeniu.';(document.body||document.documentElement).appendChild(d);}catch(e){}})();`).catch(() => { }); } catch { }
+                return;
+            }
             log("injecting into " + url);
             // UI font (JetBrains Mono, OFL) is handed over as base64 and loaded with the FontFace API
             // (binary source -> not affected by Discord's font-src CSP)
