@@ -63,9 +63,9 @@ let refreshSpotify = null;
         .bsp-roll-svg{width:13px;height:13px;fill:currentColor;transition:transform .25s cubic-bezier(.3,1.5,.5,1)}
         .bsp-card.bsp-collapsed .bsp-roll-svg{transform:rotate(180deg)}
         .bsp-card.bsp-collapsed{padding:6px 10px 6px 10px;margin-top:4px;cursor:pointer}
-        /* collapsible body: JS animates height(px)->0 + fade. Lighter and snap-free vs grid/display:none */
-        .bsp-body{overflow:hidden;height:auto;opacity:1;contain:layout;will-change:height;
-            transition:height .3s cubic-bezier(.33,0,.2,1),opacity .2s ease}
+        /* collapsible body: driven by the Web Animations API in JS (see applyCollapsed), so it glides even
+           when the OS has "reduce motion" on, which would otherwise kill CSS transitions below. */
+        .bsp-body{overflow:hidden;height:auto;opacity:1;contain:layout;will-change:height}
         .bsp-body-inner{display:flex;flex-direction:column;min-height:0}
         .bsp-card.bsp-collapsed .bsp-row{gap:8px;padding-top:6px}
         .bsp-card.bsp-collapsed .bsp-art{width:24px;height:24px;border-radius:5px}
@@ -437,36 +437,36 @@ let refreshSpotify = null;
             }
         });
 
-        // Animate the body's height in pixels (auto<->0). Reliable and compositor-light compared to
-        // grid-row interpolation, and never snaps because the start/end heights are explicit.
-        let collapseTimer = null;
+        // Glide the body open/closed with the Web Animations API. We use WAAPI (not a CSS transition)
+        // on purpose: it keeps running even when the OS "reduce motion" setting is on, which disables
+        // the CSS transitions elsewhere in this card. Heights are explicit px so it never snaps, and
+        // pinning height:auto afterwards lets the content resize freely (song change, volume bar, etc).
+        let bodyAnim = null;
         function applyCollapsed(animate) {
             if (!els.body) return;
-            if (collapseTimer) { clearTimeout(collapseTimer); collapseTimer = null; }
-            if (!animate) {   // set the state instantly (initial mount, reduced motion)
-                els.body.style.transition = "none";
+            if (bodyAnim) { try { bodyAnim.cancel(); } catch { } bodyAnim = null; }
+            const settle = () => {
                 els.body.style.height = isCollapsed ? "0px" : "auto";
                 els.body.style.opacity = isCollapsed ? "0" : "1";
-                void els.body.offsetHeight;        // flush, then let CSS own the transition again
-                els.body.style.transition = "";
-                return;
-            }
-            const full = els.bodyInner.offsetHeight;   // natural height of the content
-            if (isCollapsed) {
-                els.body.style.height = full + "px";   // pin the current height as the start point
-                void els.body.offsetHeight;
-                els.body.style.height = "0px";
-                els.body.style.opacity = "0";
-            } else {
-                els.body.style.opacity = "1";
-                els.body.style.height = "0px";
-                void els.body.offsetHeight;
-                els.body.style.height = full + "px";
-                collapseTimer = setTimeout(() => {     // after expanding, let it size to content again
-                    if (!isCollapsed) els.body.style.height = "auto";
-                    collapseTimer = null;
-                }, 320);
-            }
+            };
+            if (!animate) { settle(); return; }
+            const full = Math.max(1, els.bodyInner.offsetHeight);   // natural content height
+            const from = isCollapsed ? full : 0;
+            const to = isCollapsed ? 0 : full;
+            els.body.style.height = from + "px";
+            els.body.style.opacity = isCollapsed ? "1" : "0";
+            bodyAnim = els.body.animate(
+                [{ height: from + "px", opacity: isCollapsed ? 1 : 0 },
+                 { height: to + "px", opacity: isCollapsed ? 0 : 1 }],
+                { duration: 360, easing: "cubic-bezier(.22,.61,.36,1)", fill: "forwards" }
+            );
+            bodyAnim.onfinish = bodyAnim.oncancel = () => {
+                const a = bodyAnim;
+                if (!a) return;
+                bodyAnim = null;                 // null first so cancel()'s re-entrant event bails here
+                try { a.cancel(); } catch { }    // drop the fill so inline styles take over cleanly
+                settle();
+            };
         }
 
         // ---------- rendering ----------
