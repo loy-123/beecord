@@ -517,7 +517,7 @@ let blxDevScan = null;
         g.blx-new .blx-in,g.blx-changed .blx-in{animation:blxIn .35s cubic-bezier(.2,.9,.3,1.12) backwards}
         g.blx-static *,g.blx-static .blx-in{animation:none!important}
         @keyframes blxIn{0%{transform:scale(.5);opacity:0}60%{transform:scale(1.1);opacity:1}100%{transform:scale(1)}}
-        @media (prefers-reduced-motion:reduce){g[data-blx-dev] *{animation:none!important}}`);
+        @media (prefers-reduced-motion:reduce){:root:not([data-bc-motion="on"]) g[data-blx-dev] *{animation:none!important}}`);
 
         const mk = (tag, attrs, cls) => {
             const e = document.createElementNS(NS, tag);

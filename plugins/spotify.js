@@ -198,7 +198,7 @@ let refreshSpotify = null;
         @keyframes bsp-ring{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ac) 55%,transparent)}100%{box-shadow:0 0 0 9px transparent}}
         @keyframes bsp-eq{from{height:20%}to{height:100%}}
         @keyframes bsp-marq{0%,18%{transform:translateX(0)}82%,100%{transform:translateX(var(--shift,0px))}}
-        @media (prefers-reduced-motion:reduce){.bsp-card,.bsp-card *{animation:none!important;transition:none!important}}
+        @media (prefers-reduced-motion:reduce){:root:not([data-bc-motion="on"]) .bsp-card,:root:not([data-bc-motion="on"]) .bsp-card *{animation:none!important;transition:none!important}}
         `);
 
         // ---------- card ----------
@@ -437,6 +437,15 @@ let refreshSpotify = null;
             }
         });
 
+        // Should beecord animate right now? "on" (beecord's default) animates even under OS reduce-motion;
+        // "system" obeys the OS setting. The attribute is set on <html> by beecord's renderer.
+        const bcMotionOK = () => {
+            try {
+                if (document.documentElement.getAttribute("data-bc-motion") === "on") return true;
+                return !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+            } catch { return true; }
+        };
+
         // Glide the body open/closed with the Web Animations API. We use WAAPI (not a CSS transition)
         // on purpose: it keeps running even when the OS "reduce motion" setting is on, which disables
         // the CSS transitions elsewhere in this card. Heights are explicit px so it never snaps, and
@@ -449,7 +458,7 @@ let refreshSpotify = null;
                 els.body.style.height = isCollapsed ? "0px" : "auto";
                 els.body.style.opacity = isCollapsed ? "0" : "1";
             };
-            if (!animate) { settle(); return; }
+            if (!animate || !bcMotionOK()) { settle(); return; }
             const full = Math.max(1, els.bodyInner.offsetHeight);   // natural content height
             const from = isCollapsed ? full : 0;
             const to = isCollapsed ? 0 : full;

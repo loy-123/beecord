@@ -736,6 +736,7 @@ let blxMsgLogNote = ""; // extra info shown in the settings while it runs
         li.blx-del:hover .blx-x{opacity:1}
         li.blx-del .blx-x:hover{color:#fff;background:#da373c}
         @media (prefers-reduced-motion:no-preference){li.blx-del{animation:blx-in .25s ease-out}}
+        :root[data-bc-motion="on"] li.blx-del{animation:blx-in .25s ease-out}
         @keyframes blx-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
         `);
 

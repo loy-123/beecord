@@ -203,7 +203,7 @@
     55%{opacity:0;transform:translateX(42px);max-height:var(--h,120px);margin-bottom:0}
     100%{opacity:0;transform:translateX(42px);max-height:0;margin-bottom:-10px;padding-top:0;padding-bottom:0;border-width:0}}
 @keyframes blxfn-prog{from{transform:scaleX(1)}to{transform:scaleX(0)}}
-@media (prefers-reduced-motion:reduce){.blxfn-toast,.blxfn-toast.out{animation-duration:.01s!important}.blxfn-prog{animation:none!important;display:none}}
+@media (prefers-reduced-motion:reduce){:root:not([data-bc-motion="on"]) .blxfn-toast,:root:not([data-bc-motion="on"]) .blxfn-toast.out{animation-duration:.01s!important}:root:not([data-bc-motion="on"]) .blxfn-prog{animation:none!important;display:none}}
 `);
         function ensureHost() {
             if (host && host.isConnected) return host;

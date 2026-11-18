@@ -35,10 +35,10 @@
             "@keyframes bc-cur-breathe{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.45);opacity:.4}}");
 
         // ---------- follower engine ----------
-        let follower = null, raf = 0, frameTimer = 0, mx = -300, my = -300, fx = -300, fy = -300;
-        const stopFollower = () => { if (follower) { follower.remove(); follower = null; } if (raf) { cancelAnimationFrame(raf); raf = 0; } if (frameTimer) { clearTimeout(frameTimer); frameTimer = 0; } };
+        let follower = null, raf = 0, frameTimer = 0, mx = -300, my = -300, fx = -300, fy = -300, kick = null;
+        const stopFollower = () => { if (follower) { follower.remove(); follower = null; } if (raf) { cancelAnimationFrame(raf); raf = 0; } if (frameTimer) { clearTimeout(frameTimer); frameTimer = 0; } kick = null; };
         api.cleanup(stopFollower);
-        api.on(window, "mousemove", e => { mx = e.clientX; my = e.clientY; if (follower) follower.style.opacity = "1"; }, true);
+        api.on(window, "mousemove", e => { mx = e.clientX; my = e.clientY; if (follower) { follower.style.opacity = "1"; if (kick) kick(); } }, true);
         api.on(document, "mouseleave", () => { if (follower) follower.style.opacity = "0"; }, true);
 
         const mkFollower = () => {
@@ -50,16 +50,24 @@
             fx = mx; fy = my;
         };
         const runLoop = (hx, hy, centered) => {
-            const loop = () => {
-                const s = Math.min(0.92, Math.max(0, (Number(api.settings.get("smooth", 0)) || 0) / 100));
-                const k = s ? 1 - s : 1;
-                fx += (mx - fx) * k; fy += (my - fy) * k;
+            const place = () => {
                 follower.style.transform = centered
                     ? "translate(" + fx + "px," + fy + "px) translate(-50%,-50%)"
                     : "translate(" + Math.round(fx - hx) + "px," + Math.round(fy - hy) + "px)";
+            };
+            const loop = () => {
+                if (!follower) { raf = 0; return; }
+                const s = Math.min(0.92, Math.max(0, (Number(api.settings.get("smooth", 0)) || 0) / 100));
+                const k = s ? 1 - s : 1;
+                fx += (mx - fx) * k; fy += (my - fy) * k;
+                place();
+                // Stop once we've caught up to the pointer; mousemove re-kicks the loop. This keeps the
+                // follower buttery at the display's refresh rate while moving, and uses 0 frames while idle.
+                if (Math.abs(mx - fx) < 0.25 && Math.abs(my - fy) < 0.25) { fx = mx; fy = my; place(); raf = 0; return; }
                 raf = requestAnimationFrame(loop);
             };
-            raf = requestAnimationFrame(loop);
+            kick = () => { if (!raf && follower) raf = requestAnimationFrame(loop); };
+            kick();
         };
         const startHtml = (html, hx, hy, centered) => {
             mkFollower();

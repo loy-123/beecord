@@ -64,6 +64,21 @@
     const SAFE_MODE = INFO.safeMode || null; // "manual" | "crash" | null
     log("renderer injected" + (SAFE_MODE ? " in SAFE MODE (" + SAFE_MODE + ")" : "") + ", waiting for Discord to finish loading");
 
+    // ---------- motion preference ----------
+    // beecord's own UI animations are short and purposeful. By default we keep them smooth even when the
+    // OS "reduce motion" setting is on (that setting otherwise flattens every transition to an instant snap).
+    // "on" = always animate beecord's UI; "system" = obey the OS reduce-motion setting. Stored per device.
+    const MOTION_KEY = "beecord_motion";
+    const getMotionPref = () => { try { return localStorage.getItem(MOTION_KEY) === "system" ? "system" : "on"; } catch { return "on"; } };
+    function applyMotion(pref) {
+        const p = pref || getMotionPref();
+        try { localStorage.setItem(MOTION_KEY, p); } catch { }
+        try { document.documentElement.setAttribute("data-bc-motion", p === "system" ? "system" : "on"); } catch { }
+    }
+    // true when beecord should animate right now (forced on, or the OS isn't asking to reduce motion)
+    const motionOK = () => getMotionPref() === "on" || !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    applyMotion();
+
     // ---------- webpack access ----------
     let req = null; // set once Discord has finished loading its modules
     // Discord runs several webpack runtimes on the same chunk list (4 in 2026). Each one calls our
@@ -917,7 +932,7 @@
     @keyframes bc-pop{from{opacity:0;transform:scale(.4) rotate(-12deg)}to{opacity:1;transform:none}}
     @keyframes bc-shimmer{to{background-position:-300px 0}}
     @keyframes bc-up{0%{opacity:0;translate:0 0}15%{opacity:.7}100%{opacity:0;translate:0 -460px}}
-    @media (prefers-reduced-motion:reduce){#blxstncord-panel *{animation:none!important;transition:none!important}}`;
+    @media (prefers-reduced-motion:reduce){:root:not([data-bc-motion="on"]) #blxstncord-panel *{animation:none!important;transition:none!important}}`;
 
     function ensureStyle() {
         if (document.getElementById("blxstncord-style")) return;
@@ -990,7 +1005,8 @@
     #blxstncord-panel .ig-ver i{width:6px;height:6px;border-radius:50%;flex:none;background:var(--ig-accent);box-shadow:0 0 7px rgba(var(--ig-accent-rgb),.8)}
     #blxstncord-panel .ig-ver.dev i{background:#d8a24a;box-shadow:0 0 7px rgba(216,162,74,.7)}
     #blxstncord-panel .ig-ver span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.3px}
-    #blxstncord-panel .ig-content{position:relative;z-index:1;min-height:0;overflow-y:auto;padding:8px 8px 8px 8px;scrollbar-width:thin;scrollbar-color:#2a2a2a transparent}
+    #blxstncord-panel .ig-content{position:relative;z-index:1;min-height:0;overflow-y:auto;padding:8px 8px 8px 8px;scrollbar-width:thin;scrollbar-color:#2a2a2a transparent;
+        overscroll-behavior:contain;scrollbar-gutter:stable}
     #blxstncord-panel .ig-content>.fc-wrap{max-width:none;margin:0;padding:14px 16px 24px;min-height:100%;
         background:var(--ig-child);border:1px solid var(--ig-child-border);border-radius:var(--ig-r-p)}
     #blxstncord-panel .fc-close{position:absolute!important;top:10px!important;right:12px!important;z-index:3;width:26px!important;height:26px!important;border-radius:var(--ig-r)!important;
@@ -1082,7 +1098,7 @@
     #blxstncord-panel .bl-cat-pill.active .bl-cat-count{background:rgba(var(--ig-accent-rgb),.12);border-color:transparent;color:var(--ig-accent)}
     #blxstncord-panel .bl-list{margin-top:8px;gap:4px;border:0;background:none;border-radius:0;overflow:visible}
     #blxstncord-panel .bl-item{padding:9px 46px 9px 12px;gap:10px;border:1px solid var(--ig-child-border)!important;border-radius:var(--ig-r);
-        background:#0d0d0d;box-shadow:inset 2px 0 0 var(--ig-danger)}
+        background:#0d0d0d;box-shadow:inset 2px 0 0 var(--ig-danger);content-visibility:auto;contain-intrinsic-size:auto 44px}
     #blxstncord-panel .bl-item:hover{background:#121212;transform:none}
     #blxstncord-panel .bl-av{width:28px;height:28px;border-radius:var(--ig-r);opacity:1}
     #blxstncord-panel .bl-name{font-size:12px;font-weight:600;color:var(--ig-bright)}
@@ -1273,9 +1289,11 @@
         let meteor = null, nextMeteor = 1.5, last = performance.now(), raf = 0;
         const ctx = canvas.getContext("2d");
         const frame = now => {
-            if (!canvas.isConnected) { cancelAnimationFrame(raf); return; }
+            if (!canvas.isConnected) { cancelAnimationFrame(raf); raf = 0; return; }
+            // While Discord is hidden/minimized, keep the loop alive but do no drawing (saves GPU/CPU).
+            if (document.hidden) { last = now; raf = requestAnimationFrame(frame); return; }
             const dt = Math.min(0.05, (now - last) / 1000); last = now;
-            const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, hgt = canvas.clientHeight;
+            const dpr = Math.min(2, window.devicePixelRatio || 1), w = canvas.clientWidth, hgt = canvas.clientHeight;
             if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(hgt * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(hgt * dpr); }
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             ctx.clearRect(0, 0, w, hgt);
@@ -1308,7 +1326,7 @@
             }
             raf = requestAnimationFrame(frame);
         };
-        if (!window.matchMedia || !window.matchMedia("(prefers-reduced-motion: reduce)").matches) raf = requestAnimationFrame(frame);
+        if (motionOK()) raf = requestAnimationFrame(frame);
     }
 
     let toasted = false;
@@ -1552,7 +1570,7 @@
     #blxstncord-panel .bl-cat-pill.active{background:var(--bc-accent);border-color:var(--bc-accent);color:#fff;animation:bl-pop .25s cubic-bezier(.3,1.4,.5,1) both}
     #blxstncord-panel .bl-cat-pill.active svg{opacity:1}
     #blxstncord-panel .bl-cat-count{padding:2px 7px;border-radius:999px;font-size:11px;background:rgba(0,0,0,.25);
-        border:1px solid rgba(255,255,255,.1);transition:all .2s ease}
+        border:1px solid rgba(255,255,255,.1);transition:background .2s ease,border-color .2s ease,color .2s ease}
     #blxstncord-panel .bl-cat-pill.active .bl-cat-count{background:rgba(0,0,0,.3);border-color:rgba(255,255,255,.3);color:#fff}
     @keyframes bl-pop{0%{transform:scale(.94)}100%{transform:scale(1)}}
 
@@ -2219,13 +2237,22 @@
             lastCoreMsg ? h("div", { class: "st-none " + (lastCoreMsg.ok ? "ok" : "bad") }, lastCoreMsg.msg) : null,
             h("div", { class: "st-none" }, "Safe mode starts Discord with beecord's panel only (no plugins, no themes). If Discord won't open at all, run data\\safe-mode.bat in the beecord folder."));
 
+        const motionOn = getMotionPref() === "on";
+        const appearance = card("Appearance",
+            okv("animations", motionOn, "smooth (always on)", "following system"),
+            h("div", { class: "st-actions" },
+                tool(motionOn ? "Follow system reduce-motion" : "Always keep animations smooth", ICO.sparkles, () => {
+                    applyMotion(motionOn ? "system" : "on"); refreshPanel();
+                }, true)),
+            h("div", { class: "st-none" }, "beecord's menus, the Spotify card and the starfield animate at your monitor's refresh rate. “Follow system” obeys your OS “reduce motion” setting instead (which turns these off)."));
+
         return h("div", panelAttrs(), closeBtn(),
             h("div", { class: "fc-wrap" },
                 h("div", { class: "fc-top" }, h("h1", null, "Status"), sub),
                 SAFE_MODE ? h("div", { class: "fc-banner warn" }, h("b", null, "Safe mode"),
                     h("span", null, SAFE_MODE === "crash" ? "Discord didn't start properly 3 times in a row, so plugins and themes were skipped." : "You turned safe mode on."),
                     btn("Leave safe mode", ICO.refresh, () => log("cmd:safe-mode:off"))) : null,
-                h("div", { class: "st-grid" }, internals, pluginsCard, perf, tools),
+                h("div", { class: "st-grid" }, internals, pluginsCard, perf, appearance, tools),
                 problemsCard));
     }
 
