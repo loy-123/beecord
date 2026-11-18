@@ -21,6 +21,9 @@ themes/.trash/
 # the original unreviewed binary that shipped with the upstream project (not distributed)
 installer.exe
 
+# private, local-only agent handoff doc — kept on this machine, never pushed to the public repo
+/AGENTS.md
+
 # OS junk
 Thumbs.db
 desktop.ini
