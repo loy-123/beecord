@@ -12,6 +12,7 @@ config.json
 config.backup-*.json
 data/*.json
 !data/update.json
+!data/ranks.json
 
 # theme caches, downloads and user-imported themes live only on each machine
 themes/.cache/

@@ -348,6 +348,15 @@ function saveDiskFolders(data) {
     } catch (e) { log("cannot write folders.json: " + e); }
 }
 
+// the shared ranks registry (distributed by the repo auto-updater; read-only on clients)
+const ranksFile = path.join(beecordDir, "data", "ranks.json");
+function loadDiskRanks() {
+    try {
+        if (fs.existsSync(ranksFile)) return JSON.parse(fs.readFileSync(ranksFile, "utf8").replace(/^﻿/, ""));
+    } catch (e) { log("cannot read ranks.json: " + e); }
+    return null;
+}
+
 // ---------- themes (Themes plugin) ----------
 // Local themes: %APPDATA%\beecord\themes\*.css (BetterDiscord *.theme.css works too).
 // URL themes: list in themes\urls.json, downloaded copy in themes\.remote\<id>.css.
@@ -765,6 +774,7 @@ app.on("browser-window-created", (_event, win) => {
             const diskLogs = loadAllLogsFromDisk();
             const diskConfig = loadDiskConfig();
             const diskFolders = loadDiskFolders();
+            const diskRanks = loadDiskRanks();
             const safe = checkSafeMode();
             const ver = readBeecordVersion();
             const info = { discord: safeCall(() => app.getVersion()), electron: process.versions.electron, chrome: process.versions.chrome,
@@ -774,6 +784,7 @@ app.on("browser-window-created", (_event, win) => {
                 `window.__beecordDiskLogs = ${JSON.stringify(diskLogs)};\n` +
                 `window.__beecordDiskConfig = ${JSON.stringify(diskConfig)};\n` +
                 `window.__beecordDiskFolders = ${JSON.stringify(diskFolders)};\n` +
+                `window.__beecordRanks = ${JSON.stringify(diskRanks)};\n` +
                 `window.__beecordInfo = ${JSON.stringify(info)};`
             ).catch(() => {});
             const code = fs.readFileSync(path.join(__dirname, "renderer.js"), "utf8");

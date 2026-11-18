@@ -1,0 +1,12 @@
+{
+  "_comment": "beecord ranks registry. This file is distributed to EVERY client by the repo auto-updater, so what you put here (after pushing to the repo) is what everyone sees. Assign ranks/UIDs in the Ranks plugin settings, then push data/ranks.json to the repo. Keys under 'users' are Discord user IDs.",
+  "ranks": {
+    "owner":     { "label": "OWNER",     "color": "#f0888a", "glow": true,  "priority": 100 },
+    "dev":       { "label": "DEV",       "color": "#f2a9bc", "glow": true,  "priority": 95 },
+    "admin":     { "label": "ADMIN",     "color": "#e8c478", "glow": true,  "priority": 90 },
+    "premium":   { "label": "PREMIUM",   "color": "#b69cf0", "glow": true,  "priority": 60 },
+    "supporter": { "label": "SUPPORTER", "color": "#80d09c", "glow": false, "priority": 40 },
+    "member":    { "label": "MEMBER",    "color": "#9dbfea", "glow": false, "priority": 10 }
+  },
+  "users": {}
+}
