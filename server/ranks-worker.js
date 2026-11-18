@@ -53,10 +53,24 @@ export default {
         const reg = await load(env);
 
         // ---- public reads ----
-        if (req.method === "GET" && url.pathname === "/ranks") return json(reg);
+        if (req.method === "GET" && url.pathname === "/ranks") {
+            // also return the set of active beecord users (self-registered via /seen, auto-expiring)
+            let beecord = [];
+            try { const l = await env.RANKS.list({ prefix: "p:" }); beecord = (l.keys || []).map(k => k.name.slice(2)); } catch { }
+            return json(Object.assign({}, reg, { beecord }));
+        }
         if (req.method === "GET" && url.pathname === "/uid/check") {
             const uid = (url.searchParams.get("uid") || "").trim();
             return json({ uid, available: !!uid && !uidTaken(reg, uid, null) });
+        }
+
+        // ---- presence: a beecord client registers its OWN user id (no admin key; cosmetic). Auto-expires. ----
+        if (req.method === "POST" && url.pathname === "/seen") {
+            let body; try { body = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+            const id = String(body.userId || "").trim();
+            if (!/^\d{15,22}$/.test(id)) return json({ error: "invalid userId" }, 400);
+            try { await env.RANKS.put("p:" + id, "1", { expirationTtl: 1209600 }); } catch { } // 14 days
+            return json({ ok: true });
         }
 
         // ---- owner-only writes ----

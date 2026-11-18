@@ -2789,17 +2789,35 @@
     }, 500);
 
     // ---------- rank badges (built into the core; data comes from the loader via window.__beecordRanks,
-    // which it keeps in sync with the ranks server). Read-only: no admin here — assignments are done from
-    // the owner's separate private admin tool. ----------
+    // kept in sync with the ranks server). A badge shows ONLY next to people who actually use beecord
+    // (each client self-registers via /seen; window.__beecordRanks.beecord is the active set). beecord
+    // users with a rank show their rank; the rest show a generic "beecord" badge. No admin code here. ----------
     (function startRanksBadges() {
         const DEF = { owner: { label: "OWNER", color: "#f0888a", glow: true }, dev: { label: "DEV", color: "#f2a9bc", glow: true }, admin: { label: "ADMIN", color: "#e8c478", glow: true }, premium: { label: "PREMIUM", color: "#b69cf0", glow: true }, supporter: { label: "SUPPORTER", color: "#80d09c", glow: false }, member: { label: "MEMBER", color: "#9dbfea", glow: false } };
+        const GENERIC = { label: "beecord", color: "#9dbfea", glow: false };
         const deriveUid = id => { let x = 0x811c9dc5; const s = String(id || ""); for (let i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 0x01000193); } return "BC-" + (x >>> 0).toString(16).toUpperCase().padStart(8, "0").slice(0, 6); };
         const reg = () => { const d = (window.__beecordRanks) || {}; return { ranks: Object.assign({}, DEF, d.ranks || {}), users: d.users || {} }; };
+        const myId = () => { try { const US = getStore("UserStore"); const me = US && US.getCurrentUser && US.getCurrentUser(); return (me && me.id) || null; } catch { return null; } };
+        let beeSrc = null, beeSet = new Set();
+        const beecordUsers = () => {
+            const d = (window.__beecordRanks) || {}; const arr = Array.isArray(d.beecord) ? d.beecord : [];
+            if (arr !== beeSrc) { beeSrc = arr; beeSet = new Set(arr); }
+            const id = myId(); if (id) beeSet.add(id);   // you obviously use beecord — show your own badge right away
+            return beeSet;
+        };
         try {
             const st = document.createElement("style"); st.setAttribute("data-beecord", "ranks");
             st.textContent = ".bc-rank-badge{display:inline-flex;align-items:center;margin-left:6px;padding:0 6px;height:15px;border-radius:5px;vertical-align:middle;font:800 9.5px/15px var(--ig-font,ui-monospace,monospace);letter-spacing:.04em;white-space:nowrap;position:relative;top:-1px;color:var(--rc,#9dbfea);background:color-mix(in srgb,var(--rc,#9dbfea) 15%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--rc,#9dbfea) 45%,transparent)}.bc-rank-badge.bc-glow{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--rc) 55%,transparent),0 0 7px color-mix(in srgb,var(--rc) 38%,transparent)}";
             (document.head || document.documentElement).append(st);
         } catch { }
+
+        // presence: tell the server this account uses beecord (so its badge shows for others). Retry until
+        // Discord's stores are ready, then keep it fresh. The loader does the actual network POST.
+        let seenDone = false;
+        const reportSeen = () => { const id = myId(); if (id) { try { console.log("[beecord] cmd:ranks:seen:" + id); } catch { } seenDone = true; } };
+        const kick = setInterval(() => { if (seenDone) { clearInterval(kick); return; } reportSeen(); }, 4000);
+        setInterval(reportSeen, 10 * 60 * 1000);
+
         let MS = null, SC = null;
         const authorId = el => {
             try {
@@ -2812,15 +2830,16 @@
             } catch { return null; }
         };
         const scan = () => {
-            const r = reg();
+            const r = reg(); const bee = beecordUsers();
             for (const el of document.querySelectorAll('[class*="username_"]')) {
                 const aid = authorId(el);
                 if (el.__bcAuthor === aid) continue;
                 el.__bcAuthor = aid;
                 if (el.__bcBadge && el.__bcBadge.parentNode) el.__bcBadge.remove();
                 el.__bcBadge = null;
-                if (!aid) continue;
-                const u = r.users[aid]; const rank = u && u.rank && r.ranks[u.rank]; if (!rank) continue;
+                if (!aid || !bee.has(aid)) continue;            // only people who use beecord get a badge
+                const u = r.users[aid];
+                const rank = (u && u.rank && r.ranks[u.rank]) || GENERIC;   // their rank, or a generic beecord badge
                 const b = document.createElement("span"); b.className = "bc-rank-badge" + (rank.glow ? " bc-glow" : ""); b.textContent = rank.label || "";
                 b.style.setProperty("--rc", rank.color || "#9dbfea"); b.title = rank.label + " · UID " + ((u && u.uid) || deriveUid(aid));
                 el.__bcBadge = b; try { el.insertAdjacentElement("afterend", b); } catch { }
