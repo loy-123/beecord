@@ -17,6 +17,14 @@
 //   POST /assign  {adminKey,userId,rank,uid?}  -> assigns (unique UID enforced)   (owner only)
 //   POST /remove  {adminKey,userId}            -> removes                          (owner only)
 //   POST /rank    {adminKey,id,label?,color?,glow?,priority?,delete?} -> edit a tier (owner only)
+//   GET  /state                 -> {motd?,poll?,giveaway?,countdown?,accent?}  (public, clients poll it)
+//   POST /poll/vote     {userId,opt}      -> vote once in the current poll       (public)
+//   POST /giveaway/join {userId}          -> enter the current giveaway once      (public)
+//   POST /motd      {adminKey,text,emoji?,color?,link?} | {clear}                 (owner) sticky banner
+//   POST /poll      {adminKey,q,opts[]} | {close} | {clear}                       (owner) live poll
+//   POST /giveaway  {adminKey,prize} | {draw} | {clear}                           (owner) raffle + draw
+//   POST /countdown {adminKey,label,target,color?,confetti?} | {clear}            (owner) live countdown
+//   POST /accent    {adminKey,color} | {clear}                                    (owner) push UI accent
 //   GET  /event                 -> current broadcast event or {}          (public, clients poll it)
 //   POST /event   {adminKey,type,data?,ttl?,target?} -> broadcast an on-screen event (owner only)
 //                 type: confetti|snow|fireworks|matrix|emoji|hearts|stars|flash|rainbow|invert|pulse|
@@ -72,6 +80,15 @@ export default {
             try { const s = await env.RANKS.get("event"); if (s) { const e = JSON.parse(s); if (!e.expires || Date.now() <= e.expires) return json(e); } } catch { }
             return json({});
         }
+        // persistent owner-controlled state the client renders: message of the day, poll, giveaway,
+        // countdown, pushed accent colour. Clients poll this and render whatever is present.
+        if (req.method === "GET" && url.pathname === "/state") {
+            const out = {};
+            for (const k of ["motd", "poll", "giveaway", "countdown", "accent"]) {
+                try { const s = await env.RANKS.get(k); if (s) out[k] = JSON.parse(s); } catch { }
+            }
+            return json(out);
+        }
 
         // ---- presence: a beecord client registers its OWN user id + profile (no admin key; cosmetic). ----
         // p:<id> = recently-active set (14d, timestamp in metadata); a:<id> = ever-seen (permanent, "downloads");
@@ -88,6 +105,37 @@ export default {
             if (body.avatar) prof.avatar = String(body.avatar).slice(0, 64);
             if (Object.keys(prof).length) { try { await env.RANKS.put("u:" + id, JSON.stringify(prof)); } catch { } }
             return json({ ok: true });
+        }
+
+        // ---- public interactions: vote in a poll / join a giveaway (no admin key; one per user) ----
+        if (req.method === "POST" && url.pathname === "/poll/vote") {
+            let b; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+            const uid = String(b.userId || ""); const opt = Number(b.opt);
+            if (!/^\d{15,22}$/.test(uid)) return json({ error: "bad user" }, 400);
+            const s = await env.RANKS.get("poll"); if (!s) return json({ error: "no poll" }, 404);
+            const poll = JSON.parse(s);
+            if (!poll.open) return json({ error: "closed" }, 409);
+            if (!(opt >= 0 && opt < poll.opts.length)) return json({ error: "bad option" }, 400);
+            const vk = "pvote:" + poll.id + ":" + uid;
+            const prev = await env.RANKS.get(vk);
+            if (prev === null) {
+                poll.opts[opt].n = (poll.opts[opt].n || 0) + 1;
+                await env.RANKS.put(vk, String(opt), { expirationTtl: 2592000 });
+                await env.RANKS.put("poll", JSON.stringify(poll));
+            }
+            return json({ ok: true, poll });
+        }
+        if (req.method === "POST" && url.pathname === "/giveaway/join") {
+            let b; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+            const uid = String(b.userId || "");
+            if (!/^\d{15,22}$/.test(uid)) return json({ error: "bad user" }, 400);
+            const s = await env.RANKS.get("giveaway"); if (!s) return json({ error: "none" }, 404);
+            const g = JSON.parse(s);
+            if (!g.open) return json({ error: "closed" }, 409);
+            const jk = "gj:" + g.id + ":" + uid;
+            const prev = await env.RANKS.get(jk);
+            if (prev === null) { g.entries = (g.entries || 0) + 1; await env.RANKS.put(jk, "1", { expirationTtl: 604800 }); await env.RANKS.put("giveaway", JSON.stringify(g)); }
+            return json({ ok: true, entries: g.entries || 0 });
         }
 
         // ---- owner-only writes ----
@@ -125,6 +173,50 @@ export default {
                 delete reg.users[userId];
                 await save(env, reg);
                 return json({ ok: true, userId });
+            }
+            if (url.pathname === "/motd") {
+                if (body.clear) { try { await env.RANKS.delete("motd"); } catch { } return json({ ok: true, cleared: true }); }
+                const text = String(body.text || "").slice(0, 300);
+                if (!text) return json({ error: "empty" }, 400);
+                const motd = { id: Date.now(), text, emoji: String(body.emoji || "").slice(0, 16), color: String(body.color || "").slice(0, 32), link: (/^https?:\/\//.test(body.link || "") ? String(body.link).slice(0, 300) : ""), at: Date.now() };
+                await env.RANKS.put("motd", JSON.stringify(motd)); return json({ ok: true, motd });
+            }
+            if (url.pathname === "/poll") {
+                if (body.clear) { try { await env.RANKS.delete("poll"); } catch { } return json({ ok: true, cleared: true }); }
+                if (body.close) { const s = await env.RANKS.get("poll"); if (!s) return json({ error: "none" }, 404); const p = JSON.parse(s); p.open = false; await env.RANKS.put("poll", JSON.stringify(p)); return json({ ok: true, poll: p }); }
+                const q = String(body.q || "").slice(0, 200);
+                const opts = (Array.isArray(body.opts) ? body.opts : []).map(o => String(o).slice(0, 80)).filter(Boolean).slice(0, 6);
+                if (!q || opts.length < 2) return json({ error: "need a question and 2+ options" }, 400);
+                const poll = { id: Date.now(), q, opts: opts.map(t => ({ t, n: 0 })), at: Date.now(), open: true };
+                await env.RANKS.put("poll", JSON.stringify(poll)); return json({ ok: true, poll });
+            }
+            if (url.pathname === "/giveaway") {
+                if (body.clear) { try { await env.RANKS.delete("giveaway"); } catch { } return json({ ok: true, cleared: true }); }
+                if (body.draw) {
+                    const s = await env.RANKS.get("giveaway"); if (!s) return json({ error: "none" }, 404);
+                    const g = JSON.parse(s); const entrants = [];
+                    try { let c; do { const l = await env.RANKS.list({ prefix: "gj:" + g.id + ":", cursor: c }); for (const k of (l.keys || [])) entrants.push(k.name.split(":").pop()); c = l.list_complete ? null : l.cursor; } while (c); } catch { }
+                    if (!entrants.length) return json({ error: "no entries" }, 400);
+                    g.winner = entrants[Math.floor(Math.random() * entrants.length)]; g.open = false; g.drawnAt = Date.now();
+                    await env.RANKS.put("giveaway", JSON.stringify(g)); return json({ ok: true, winner: g.winner, entries: entrants.length });
+                }
+                const prize = String(body.prize || "").slice(0, 120);
+                if (!prize) return json({ error: "need a prize" }, 400);
+                const g = { id: Date.now(), prize, at: Date.now(), open: true, entries: 0 };
+                await env.RANKS.put("giveaway", JSON.stringify(g)); return json({ ok: true, giveaway: g });
+            }
+            if (url.pathname === "/countdown") {
+                if (body.clear) { try { await env.RANKS.delete("countdown"); } catch { } return json({ ok: true, cleared: true }); }
+                const target = Number(body.target);
+                if (!isFinite(target) || target <= 0) return json({ error: "bad target" }, 400);
+                const cd = { id: Date.now(), label: String(body.label || "").slice(0, 120), target, color: String(body.color || "").slice(0, 32), confetti: !!body.confetti };
+                await env.RANKS.put("countdown", JSON.stringify(cd)); return json({ ok: true, countdown: cd });
+            }
+            if (url.pathname === "/accent") {
+                if (body.clear) { try { await env.RANKS.delete("accent"); } catch { } return json({ ok: true, cleared: true }); }
+                const color = String(body.color || "");
+                if (!/^#?[0-9a-fA-F]{6}$/.test(color)) return json({ error: "bad color" }, 400);
+                await env.RANKS.put("accent", JSON.stringify({ color: color.replace(/^#?/, "#"), at: Date.now() })); return json({ ok: true });
             }
             if (url.pathname === "/event") {
                 const type = String(body.type || "").trim();

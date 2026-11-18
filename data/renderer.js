@@ -3048,5 +3048,131 @@
         window.addEventListener("beecord-event", ev => { try { run(ev.detail); } catch { } });
     })();
 
+    // ---- persistent community state: message of the day, live countdown, pushed accent colour,
+    //      live polls and giveaways. Rendered from window.__beecordState (refreshed by the loader). ----
+    (function beecordState() {
+        const Z = 2147482000;
+        const myId = () => { try { const US = getStore("UserStore"); const me = US && US.getCurrentUser && US.getCurrentUser(); return (me && me.id) || null; } catch { return null; } };
+        const LSget = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } };
+        const LSset = (k, v) => { try { localStorage.setItem(k, v); } catch { } };
+        const accent = c => (c && /^#?[0-9a-fA-F]{6}$/.test(c)) ? c.replace(/^#?/, "#") : null;
+        const emit = (marker, obj) => { try { console.log("[beecord] " + marker + JSON.stringify(obj)); } catch { } };
+
+        let styled = false;
+        const ensure = () => {
+            if (styled) return; styled = true;
+            const s = document.createElement("style");
+            s.textContent =
+                ".bc-motd{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:" + Z + ";display:flex;align-items:center;gap:10px;max-width:min(680px,92vw);padding:7px 12px 7px 14px;border-radius:999px;background:rgba(16,17,21,.96);box-shadow:0 8px 30px rgba(0,0,0,.5);border:1px solid var(--ig-border,rgba(255,255,255,.08));border-left:3px solid var(--bcc,var(--ig-accent,#9dbfea));color:#eef0f3;font:600 12.5px var(--ig-font,'gg sans',sans-serif)}" +
+                ".bc-motd-em{font-size:15px;flex:none}.bc-motd-tx{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+                ".bc-motd-link{color:var(--bcc,var(--ig-accent,#9dbfea));text-decoration:none;font-weight:700;flex:none}.bc-motd-link:hover{text-decoration:underline}" +
+                ".bc-motd-x{cursor:pointer;color:#8a8f98;flex:none;margin-left:2px}.bc-motd-x:hover{color:#fff}" +
+                ".bc-cd{position:fixed;left:16px;bottom:16px;z-index:" + Z + ";padding:9px 14px;border-radius:12px;background:rgba(16,17,21,.96);box-shadow:0 10px 34px rgba(0,0,0,.5);border:1px solid var(--ig-border,rgba(255,255,255,.08));border-top:2px solid var(--bcc,var(--ig-accent,#9dbfea));font-family:var(--ig-font,'gg sans',sans-serif);pointer-events:none}" +
+                ".bc-cd-lab{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--bcc,var(--ig-accent,#9dbfea))}" +
+                ".bc-cd-num{font-size:20px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;margin-top:2px}" +
+                ".bc-st-host{position:fixed;right:16px;bottom:16px;z-index:" + Z + ";display:flex;flex-direction:column;gap:10px;width:260px;max-width:88vw}" +
+                ".bc-card{background:rgba(16,17,21,.97);border:1px solid var(--ig-border,rgba(255,255,255,.08));border-radius:12px;padding:12px;box-shadow:0 12px 40px rgba(0,0,0,.5);font-family:var(--ig-font,'gg sans',sans-serif);color:#eef0f3}" +
+                ".bc-card-h{font-size:13px;font-weight:800;margin-bottom:10px;line-height:1.3}.bc-card-f{font-size:10.5px;color:#9298a0;margin-top:8px}" +
+                ".bc-opt{display:block;width:100%;text-align:left;margin:5px 0;padding:8px 10px;border:0;border-radius:8px;background:#23252b;color:#eef0f3;font:600 12px var(--ig-font,'gg sans',sans-serif);cursor:pointer;transition:background .12s}" +
+                ".bc-opt:hover{background:var(--bcc,var(--ig-accent,#9dbfea));color:#07101c}.bc-opt.join{text-align:center;background:var(--ig-accent,#9dbfea);color:#07101c;font-weight:800}" +
+                ".bc-res{position:relative;margin:5px 0;height:26px;border-radius:7px;background:#1c1e23;overflow:hidden}" +
+                ".bc-res-bar{position:absolute;top:0;bottom:0;left:0;background:color-mix(in srgb,var(--ig-accent,#9dbfea) 42%,transparent);transition:width .4s}" +
+                ".bc-res-tx{position:absolute;inset:0;display:flex;align-items:center;padding:0 9px;font-size:11px;font-weight:600}" +
+                ".bc-win{text-align:center;padding:9px;border-radius:8px;background:#23252b;font-weight:800;font-size:13px}.bc-win.me{background:var(--ig-accent,#9dbfea);color:#07101c}";
+            (document.head || document.documentElement).append(s);
+        };
+
+        let motdEl = null, cdEl = null, cdTimer = null, cdId = null, host = null, appliedAccent = false, lastState = {};
+        const getHost = () => { if (!host) { ensure(); host = document.createElement("div"); host.className = "bc-st-host"; (document.body || document.documentElement).append(host); } return host; };
+
+        const renderMotd = (m) => {
+            if (motdEl) { motdEl.remove(); motdEl = null; }
+            if (!m || !m.text || LSget("bc_motd_" + m.id) === "1") return;
+            ensure();
+            motdEl = document.createElement("div"); motdEl.className = "bc-motd";
+            const c = accent(m.color); if (c) motdEl.style.setProperty("--bcc", c);
+            if (m.emoji) { const e = document.createElement("span"); e.className = "bc-motd-em"; e.textContent = m.emoji; motdEl.append(e); }
+            const t = document.createElement("span"); t.className = "bc-motd-tx"; t.textContent = m.text; motdEl.append(t);
+            if (m.link) { const a = document.createElement("a"); a.className = "bc-motd-link"; a.textContent = "otwórz"; a.href = m.link; a.target = "_blank"; a.rel = "noreferrer"; motdEl.append(a); }
+            const x = document.createElement("span"); x.className = "bc-motd-x"; x.textContent = "✕"; x.title = "ukryj"; x.onclick = () => { LSset("bc_motd_" + m.id, "1"); if (motdEl) { motdEl.remove(); motdEl = null; } }; motdEl.append(x);
+            (document.body || document.documentElement).append(motdEl);
+        };
+
+        const fmtDur = ms => { if (ms < 0) ms = 0; const s = Math.floor(ms / 1000); const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60; const p = n => String(n).padStart(2, "0"); return (d ? d + "d " : "") + p(h) + ":" + p(m) + ":" + p(ss); };
+        const renderCountdown = (cd) => {
+            if (!cd || !cd.target) { if (cdTimer) { clearInterval(cdTimer); cdTimer = null; } if (cdEl) { cdEl.remove(); cdEl = null; } cdId = null; return; }
+            if (cd.id === cdId && cdEl) return;   // same countdown already ticking
+            cdId = cd.id; if (cdTimer) { clearInterval(cdTimer); cdTimer = null; } if (cdEl) cdEl.remove();
+            ensure(); cdEl = document.createElement("div"); cdEl.className = "bc-cd"; const c = accent(cd.color); if (c) cdEl.style.setProperty("--bcc", c);
+            const lab = document.createElement("div"); lab.className = "bc-cd-lab"; lab.textContent = cd.label || "Odliczanie";
+            const num = document.createElement("div"); num.className = "bc-cd-num";
+            cdEl.append(lab, num); (document.body || document.documentElement).append(cdEl);
+            const tick = () => {
+                const left = cd.target - Date.now();
+                if (left <= 0) {
+                    num.textContent = "teraz! 🎉"; clearInterval(cdTimer); cdTimer = null;
+                    if (cd.confetti && LSget("bc_cd_fired_" + cd.id) !== "1") { LSset("bc_cd_fired_" + cd.id, "1"); try { window.dispatchEvent(new CustomEvent("beecord-event", { detail: { id: "cd-" + cd.id, type: "confetti" } })); } catch { } }
+                    setTimeout(() => { if (cdEl) { cdEl.remove(); cdEl = null; } cdId = null; }, 8000); return;
+                }
+                num.textContent = fmtDur(left);
+            };
+            tick(); cdTimer = setInterval(tick, 1000);
+        };
+
+        const renderPoll = (wrap, p) => {
+            if (!p || !p.q) return;
+            const me = myId();
+            const voted = LSget("bc_voted_" + p.id) === "1" || !p.open;
+            const total = p.opts.reduce((a, o) => a + (o.n || 0), 0);
+            const card = document.createElement("div"); card.className = "bc-card";
+            const hd = document.createElement("div"); hd.className = "bc-card-h"; hd.textContent = "📊 " + p.q; card.append(hd);
+            p.opts.forEach((o, i) => {
+                if (!voted) {
+                    const b = document.createElement("button"); b.className = "bc-opt"; b.textContent = o.t;
+                    b.onclick = () => { if (!me) return; LSset("bc_voted_" + p.id, "1"); emit("cmd:bc:vote:", { pollId: p.id, userId: me, opt: i }); o.n = (o.n || 0) + 1; renderAll(lastState); };
+                    card.append(b);
+                } else {
+                    const pct = total ? Math.round((o.n || 0) * 100 / total) : 0;
+                    const row = document.createElement("div"); row.className = "bc-res";
+                    const bar = document.createElement("div"); bar.className = "bc-res-bar"; bar.style.width = pct + "%";
+                    const tx = document.createElement("div"); tx.className = "bc-res-tx"; tx.textContent = o.t + " · " + pct + "% (" + (o.n || 0) + ")";
+                    row.append(bar, tx); card.append(row);
+                }
+            });
+            if (voted) { const f = document.createElement("div"); f.className = "bc-card-f"; f.textContent = (p.open ? "zagłosowano — " : "zamknięta — ") + total + " głosów"; card.append(f); }
+            wrap.append(card);
+        };
+
+        const renderGiveaway = (wrap, g) => {
+            if (!g || !g.prize) return;
+            const me = myId();
+            const card = document.createElement("div"); card.className = "bc-card";
+            const hd = document.createElement("div"); hd.className = "bc-card-h"; hd.textContent = "🎁 " + g.prize; card.append(hd);
+            if (g.winner) {
+                const win = document.createElement("div"); win.className = "bc-win" + (g.winner === me ? " me" : ""); win.textContent = g.winner === me ? "🏆 WYGRAŁEŚ!" : "🏆 Zwycięzca wylosowany"; card.append(win);
+            } else if (g.open) {
+                const joined = LSget("bc_joined_" + g.id) === "1";
+                if (!joined) { const b = document.createElement("button"); b.className = "bc-opt join"; b.textContent = "🎉 Dołącz do losowania"; b.onclick = () => { if (!me) return; LSset("bc_joined_" + g.id, "1"); emit("cmd:bc:join:", { gid: g.id, userId: me }); renderAll(lastState); }; card.append(b); }
+                else { const f = document.createElement("div"); f.className = "bc-card-f"; f.textContent = "zapisano ✓ (" + (g.entries || 0) + " uczestników)"; card.append(f); }
+            } else { const f = document.createElement("div"); f.className = "bc-card-f"; f.textContent = "losowanie zamknięte"; card.append(f); }
+            wrap.append(card);
+        };
+
+        const renderAll = (st) => {
+            lastState = st || {};
+            ensure();
+            const ac = st && st.accent && accent(st.accent.color);
+            try { if (ac) { document.documentElement.style.setProperty("--ig-accent", ac); appliedAccent = true; } else if (appliedAccent) { document.documentElement.style.removeProperty("--ig-accent"); appliedAccent = false; } } catch { }
+            renderMotd(st && st.motd);
+            renderCountdown(st && st.countdown);
+            const wrap = getHost(); wrap.innerHTML = "";
+            renderPoll(wrap, st && st.poll);
+            renderGiveaway(wrap, st && st.giveaway);
+        };
+
+        window.addEventListener("beecord-state", () => { try { renderAll(window.__beecordState || {}); } catch { } });
+        try { if (window.__beecordState) renderAll(window.__beecordState); } catch { }
+    })();
+
     tick();
 })();

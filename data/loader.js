@@ -397,10 +397,32 @@ async function pollEvent(wc) {
         await wc.executeJavaScript(`window.dispatchEvent(new CustomEvent("beecord-event",{detail:${JSON.stringify(e)}}));`).catch(() => { });
     } catch { /* offline / no event endpoint yet: ignore */ }
 }
+// persistent owner-controlled state (message of the day, poll, giveaway, countdown, accent) — polled
+// alongside events and injected as window.__beecordState with a "beecord-state" event when it changes.
+let lastStateJson = "";
+async function pollState(wc) {
+    const base = ranksServerUrl();
+    if (!base || typeof fetch !== "function" || !wc || wc.isDestroyed()) return;
+    try {
+        const res = await fetch(base + "/state", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        const js = JSON.stringify(data || {});
+        if (js === lastStateJson) return;
+        lastStateJson = js;
+        await wc.executeJavaScript(`window.__beecordState=${js};window.dispatchEvent(new CustomEvent("beecord-state"));`).catch(() => { });
+    } catch { /* offline / no /state endpoint yet: ignore */ }
+}
+// client -> server POST for a poll vote / giveaway entry (page can't fetch the 3rd-party origin under CSP)
+function beecordInteract(path, payload) {
+    const base = ranksServerUrl();
+    if (!base || typeof fetch !== "function") return;
+    try { fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).then(() => { lastStateJson = ""; pollState(eventPollWC); }).catch(() => { }); } catch { }
+}
 function startEventPoll(wc) {
     eventPollWC = wc;
-    pollEvent(wc);
-    if (!eventPollTimer) eventPollTimer = setInterval(() => pollEvent(eventPollWC), 15 * 1000);
+    pollEvent(wc); pollState(wc);
+    if (!eventPollTimer) eventPollTimer = setInterval(() => { pollEvent(eventPollWC); pollState(eventPollWC); }, 15 * 1000);
 }
 
 // ---------- themes (Themes plugin) ----------
@@ -779,6 +801,14 @@ app.on("browser-window-created", (_event, win) => {
                     fetch(base + "/seen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => { });
                 }
             } catch { }
+            return;
+        }
+        if (msg.includes("cmd:bc:vote:")) {
+            try { const p = JSON.parse(msg.slice(msg.indexOf("cmd:bc:vote:") + 12).trim()); if (p && /^\d{15,22}$/.test(String(p.userId || ""))) beecordInteract("/poll/vote", p); } catch { }
+            return;
+        }
+        if (msg.includes("cmd:bc:join:")) {
+            try { const p = JSON.parse(msg.slice(msg.indexOf("cmd:bc:join:") + 12).trim()); if (p && /^\d{15,22}$/.test(String(p.userId || ""))) beecordInteract("/giveaway/join", p); } catch { }
             return;
         }
         if (msg.includes("cmd:log-entry:")) {
