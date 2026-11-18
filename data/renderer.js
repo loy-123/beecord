@@ -2866,43 +2866,50 @@
     })();
 
     // ---- broadcast events: the owner can push an on-screen effect to every beecord client ----
-    // (confetti, snow, emoji rain, an announcement banner, a toast, a quick screen-shake). The loader
-    // polls the server's /event and fires a "beecord-event"; we de-dupe per machine so it plays once.
+    // The loader polls the server's /event and fires a "beecord-event"; we de-dupe per machine so it
+    // plays once. Full-screen announcement is bold; plus confetti, snow, fireworks, emoji/heart/star
+    // rain, matrix, flash, rainbow, invert, pulse, shake, marquee and big text.
     (function beecordEvents() {
         const SEEN = "bc_events_seen";
         const seen = () => { try { return JSON.parse(localStorage.getItem(SEEN) || "[]"); } catch { return []; } };
         const markSeen = id => { try { const a = seen(); if (a.indexOf(id) >= 0) return false; a.push(id); while (a.length > 40) a.shift(); localStorage.setItem(SEEN, JSON.stringify(a)); return true; } catch { return true; } };
         const myId = () => { try { const US = getStore("UserStore"); const me = US && US.getCurrentUser && US.getCurrentUser(); return (me && me.id) || null; } catch { return null; } };
         const Z = 2147483000;
+        const appRoot = () => document.querySelector('#app-mount, [class*="app_"]') || document.body;
+        const accent = c => (c && /^#?[0-9a-fA-F]{3,8}$/.test(c)) ? c.replace(/^#?/, "#") : "#9dbfea";
+        const hexA = (hex, a) => { try { let h = accent(hex).replace("#", ""); if (h.length === 3) h = h.split("").map(x => x + x).join(""); const n = parseInt(h.slice(0, 6), 16); return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")"; } catch { return "rgba(157,191,234," + a + ")"; } };
 
         let styled = false;
         const ensureFx = () => {
             if (styled) return; styled = true;
             const s = document.createElement("style");
             s.textContent =
-                "@keyframes bcShake{10%,90%{transform:translate3d(-2px,0,0)}20%,80%{transform:translate3d(4px,0,0)}30%,50%,70%{transform:translate3d(-8px,0,0)}40%,60%{transform:translate3d(8px,0,0)}}" +
+                "@keyframes bcShake{10%,90%{transform:translate3d(-3px,0,0)}20%,80%{transform:translate3d(5px,0,0)}30%,50%,70%{transform:translate3d(-10px,0,0)}40%,60%{transform:translate3d(10px,0,0)}}" +
                 ".bc-shake{animation:bcShake .6s cubic-bezier(.36,.07,.19,.97) both}" +
-                "@keyframes bcFall{to{transform:translateY(105vh) rotate(var(--r,360deg));opacity:.9}}" +
-                "@keyframes bcAnnounceIn{from{transform:translate(-50%,-20px) scale(.96);opacity:0}to{transform:translate(-50%,0) scale(1);opacity:1}}" +
-                ".bc-announce{position:fixed;top:54px;left:50%;transform:translateX(-50%);z-index:" + Z + ";max-width:min(520px,92vw);padding:14px 18px;border-radius:14px;" +
-                "background:linear-gradient(180deg,rgba(24,25,30,.98),rgba(16,17,21,.98));box-shadow:0 18px 60px rgba(0,0,0,.6);border:1px solid var(--ig-border,rgba(255,255,255,.08));" +
-                "border-left:3px solid var(--bcc,#9dbfea);color:#f2f3f5;font-family:var(--ig-font,'gg sans',sans-serif);animation:bcAnnounceIn .4s cubic-bezier(.22,1,.36,1) both}" +
-                ".bc-announce h4{margin:0 0 4px;font-size:14px;font-weight:800;color:var(--bcc,#9dbfea);letter-spacing:.3px}" +
-                ".bc-announce p{margin:0;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word}" +
-                ".bc-announce .x{position:absolute;top:8px;right:10px;cursor:pointer;color:#80848e;font-size:15px;line-height:1}" +
-                ".bc-announce .x:hover{color:#f2f3f5}";
+                "@keyframes bcPulse{0%,100%{transform:scale(1)}40%{transform:scale(1.04)}}" +
+                ".bc-pulse{animation:bcPulse .7s ease both}" +
+                "@keyframes bcFall{to{transform:translateY(112vh) rotate(var(--r,360deg));opacity:.85}}" +
+                "@keyframes bcRise{to{transform:translateY(-115vh) rotate(var(--r,15deg));opacity:0}}" +
+                "@keyframes bcTwinkle{0%,100%{opacity:0;transform:scale(.4)}50%{opacity:1;transform:scale(1)}}" +
+                "@keyframes bcPop{from{transform:scale(.55);opacity:0}to{transform:scale(1);opacity:1}}" +
+                "@keyframes bcSpin{to{transform:rotate(360deg)}}" +
+                "@keyframes bcFsIn{from{opacity:0}to{opacity:1}}" +
+                "@keyframes bcMarquee{from{transform:translateX(100vw)}to{transform:translateX(calc(-100% - 100vw))}}" +
+                ".bc-fs{position:fixed;inset:0;z-index:" + Z + ";display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;overflow:hidden;animation:bcFsIn .3s ease both}" +
+                ".bc-fs-sub{font:800 clamp(14px,2.4vw,26px)/1.2 var(--ig-font,'gg sans',sans-serif);color:var(--bcc,#9dbfea);text-transform:uppercase;letter-spacing:.14em;margin-bottom:16px}" +
+                ".bc-fs-big{font:900 clamp(32px,8.5vw,104px)/1.03 var(--ig-font,'gg sans',sans-serif);color:#fff;letter-spacing:-1.5px;margin:0;text-shadow:0 8px 54px var(--bcc,#9dbfea);padding:0 4vw;max-width:94vw;word-break:break-word}" +
+                ".bc-fs-hint{position:absolute;bottom:34px;left:0;right:0;text-align:center;font:600 12px var(--ig-font,sans-serif);color:rgba(255,255,255,.45)}" +
+                ".bc-marquee{position:fixed;left:0;right:0;top:44%;z-index:" + Z + ";pointer-events:none;white-space:nowrap;overflow:hidden;background:linear-gradient(90deg,transparent,var(--bcc,#9dbfea) 12%,var(--bcc,#9dbfea) 88%,transparent);padding:12px 0;box-shadow:0 0 40px var(--bcc,#9dbfea)}" +
+                ".bc-marquee span{display:inline-block;font:900 clamp(24px,5.5vw,60px) var(--ig-font,sans-serif);color:#07101c;animation:bcMarquee var(--d,8s) linear forwards}" +
+                ".bc-rainbow{position:fixed;inset:-25%;z-index:" + Z + ";pointer-events:none;opacity:.32;mix-blend-mode:screen;background:conic-gradient(from 0deg,#ff004c,#ff8a00,#ffe600,#00e676,#00b0ff,#8a2be2,#ff004c);animation:bcSpin 3.5s linear infinite;transition:opacity .4s}";
             (document.head || document.documentElement).append(s);
         };
 
-        // particle canvas used by confetti + snow
+        const fsLayer = () => { const el = document.createElement("div"); el.style.cssText = "position:fixed;inset:0;z-index:" + Z + ";pointer-events:none;overflow:hidden"; (document.body || document.documentElement).append(el); return el; };
+        const mkCanvas = () => { const el = document.createElement("canvas"); el.style.cssText = "position:fixed;inset:0;z-index:" + Z + ";pointer-events:none"; const dpr = Math.min(window.devicePixelRatio || 1, 2); const W = innerWidth, H = innerHeight; el.width = W * dpr; el.height = H * dpr; el.style.width = W + "px"; el.style.height = H + "px"; (document.body || document.documentElement).append(el); const ctx = el.getContext("2d"); ctx.scale(dpr, dpr); return { el, ctx, W, H }; };
+
         const particles = (opts) => {
-            const cv = document.createElement("canvas");
-            cv.style.cssText = "position:fixed;inset:0;z-index:" + Z + ";pointer-events:none";
-            const dpr = Math.min(window.devicePixelRatio || 1, 2);
-            const W = innerWidth, H = innerHeight;
-            cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + "px"; cv.style.height = H + "px";
-            (document.body || document.documentElement).append(cv);
-            const ctx = cv.getContext("2d"); ctx.scale(dpr, dpr);
+            const { el, ctx, W, H } = mkCanvas();
             const P = opts.make(W, H);
             const start = performance.now(); let prev = start;
             (function frame(now) {
@@ -2910,57 +2917,105 @@
                 let alive = 0;
                 for (const p of P) { opts.step(p, dt, W, H); if (p.y < H + 40) alive++; opts.draw(ctx, p); }
                 if (now - start < opts.dur && (alive > 0 || now - start < opts.spawnFor)) requestAnimationFrame(frame);
-                else cv.remove();
+                else el.remove();
             })(start);
         };
         const CONFO = ["#f0888a", "#e8c478", "#80d09c", "#9dbfea", "#b69cf0", "#f2a9bc", "#ffffff"];
         const confetti = () => particles({
             dur: 6000, spawnFor: 0,
-            make: (W, H) => { const a = []; for (let i = 0; i < 180; i++) a.push({ x: Math.random() * W, y: -20 - Math.random() * H * .4, w: 6 + Math.random() * 6, h: 8 + Math.random() * 8, vx: -2.5 + Math.random() * 5, vy: 2 + Math.random() * 4, rot: Math.random() * 6.28, vr: -.2 + Math.random() * .4, c: CONFO[i % CONFO.length] }); return a; },
+            make: (W, H) => { const a = []; for (let i = 0; i < 200; i++) a.push({ x: Math.random() * W, y: -20 - Math.random() * H * .4, w: 6 + Math.random() * 6, h: 8 + Math.random() * 8, vx: -2.5 + Math.random() * 5, vy: 2 + Math.random() * 4, rot: Math.random() * 6.28, vr: -.2 + Math.random() * .4, c: CONFO[i % CONFO.length] }); return a; },
             step: (p, dt) => { const k = dt / 16; p.x += p.vx * k; p.y += p.vy * k; p.vy += .03 * k; p.rot += p.vr * k; },
             draw: (ctx, p) => { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.c; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore(); }
         });
         const snow = () => particles({
             dur: 9000, spawnFor: 7000,
-            make: (W, H) => { const a = []; for (let i = 0; i < 140; i++) a.push({ x: Math.random() * W, y: Math.random() * H - H, r: 1.5 + Math.random() * 3, vy: .6 + Math.random() * 1.6, drift: Math.random() * 6.28, ds: .01 + Math.random() * .03, o: .4 + Math.random() * .5 }); return a; },
+            make: (W, H) => { const a = []; for (let i = 0; i < 150; i++) a.push({ x: Math.random() * W, y: Math.random() * H - H, r: 1.5 + Math.random() * 3, vy: .6 + Math.random() * 1.6, drift: Math.random() * 6.28, ds: .01 + Math.random() * .03, o: .4 + Math.random() * .5 }); return a; },
             step: (p, dt, W, H) => { const k = dt / 16; p.y += p.vy * k; p.drift += p.ds * k; p.x += Math.sin(p.drift) * .6 * k; if (p.y > H + 5) { p.y = -5; p.x = Math.random() * W; } },
             draw: (ctx, p) => { ctx.globalAlpha = p.o; ctx.fillStyle = "#eaf2ff"; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.28); ctx.fill(); ctx.globalAlpha = 1; }
         });
-        const emojiRain = (em) => {
-            const glyphs = (Array.from(String(em || "🎉").trim()).filter(c => c.trim())).slice(0, 6);
-            if (!glyphs.length) glyphs.push("🎉");
-            ensureFx();
-            const host = document.createElement("div");
-            host.style.cssText = "position:fixed;inset:0;z-index:" + Z + ";pointer-events:none;overflow:hidden";
-            (document.body || document.documentElement).append(host);
-            for (let i = 0; i < 46; i++) {
-                const s = document.createElement("span");
-                s.textContent = glyphs[i % glyphs.length];
-                const size = 18 + Math.random() * 26, dur = 3 + Math.random() * 3, delay = Math.random() * 2.5;
-                s.style.cssText = "position:absolute;top:-40px;left:" + (Math.random() * 100) + "vw;font-size:" + size + "px;--r:" + (Math.floor(Math.random() * 720) - 360) + "deg;" +
-                    "animation:bcFall " + dur + "s linear " + delay + "s forwards;will-change:transform,opacity";
+        const fireworks = () => {
+            const { el, ctx, W, H } = mkCanvas(); const parts = [];
+            const burst = (x, y) => { const col = CONFO[Math.floor(Math.random() * CONFO.length)]; const n = 55 + Math.floor(Math.random() * 35); for (let i = 0; i < n; i++) { const a = Math.random() * 6.28, s = 1 + Math.random() * 4.5; parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1, c: col }); } };
+            const start = performance.now(); let prev = start, nextB = start;
+            (function frame(now) { const dt = Math.min(40, now - prev); prev = now; ctx.clearRect(0, 0, W, H);
+                if (now > nextB && now - start < 4800) { burst(W * (.18 + Math.random() * .64), H * (.18 + Math.random() * .4)); nextB = now + 280 + Math.random() * 420; }
+                for (const p of parts) { const k = dt / 16; p.x += p.vx * k; p.y += p.vy * k; p.vy += .04 * k; p.vx *= .99; p.life -= .012 * k; if (p.life > 0) { ctx.globalAlpha = Math.max(0, p.life); ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(p.x, p.y, 2.4, 0, 6.28); ctx.fill(); } }
+                ctx.globalAlpha = 1;
+                if (now - start < 6200) requestAnimationFrame(frame); else el.remove();
+            })(start);
+        };
+        const matrix = () => {
+            const { el, ctx, W, H } = mkCanvas(); const cols = Math.floor(W / 14); const y = new Array(cols).fill(0).map(() => Math.random() * H);
+            const chars = "ｱｲｳｴｵｶｷｸ0123456789beecord$#*"; const start = performance.now();
+            (function frame(now) { ctx.fillStyle = "rgba(0,0,0,.09)"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "#39ff6a"; ctx.font = "14px monospace";
+                for (let i = 0; i < cols; i++) { ctx.fillText(chars[Math.floor(Math.random() * chars.length)], i * 14, y[i]); y[i] += 14; if (y[i] > H && Math.random() > .975) y[i] = 0; }
+                if (now - start < 6000) requestAnimationFrame(frame); else { el.style.transition = "opacity .5s"; el.style.opacity = "0"; setTimeout(() => el.remove(), 520); }
+            })(start);
+        };
+        const rainGlyph = (glyphs, up, cssColor) => {
+            ensureFx(); const host = fsLayer();
+            for (let i = 0; i < 44; i++) {
+                const s = document.createElement("span"); s.textContent = glyphs[i % glyphs.length];
+                const size = 18 + Math.random() * 28, dur = 3 + Math.random() * 3, delay = Math.random() * 2.2;
+                s.style.cssText = "position:absolute;" + (up ? "bottom:-50px" : "top:-50px") + ";left:" + (Math.random() * 100) + "vw;font-size:" + size + "px;--r:" + (Math.floor(Math.random() * 720) - 360) + "deg;" +
+                    (cssColor ? "color:" + cssColor + ";" : "") + "animation:" + (up ? "bcRise" : "bcFall") + " " + dur + "s " + (up ? "ease-in" : "linear") + " " + delay + "s forwards;will-change:transform,opacity";
                 host.append(s);
             }
             setTimeout(() => host.remove(), 9000);
         };
-        const announce = (title, text, color) => {
-            ensureFx();
-            const el = document.createElement("div");
-            el.className = "bc-announce";
-            if (color && /^#?[0-9a-fA-F]{3,8}$/.test(color)) el.style.setProperty("--bcc", color.replace(/^#?/, "#"));
-            const x = document.createElement("span"); x.className = "x"; x.textContent = "✕";
-            const h4 = document.createElement("h4"); h4.textContent = title || "beecord";
-            const p = document.createElement("p"); p.textContent = text || "";
-            el.append(x, h4, p);
-            (document.body || document.documentElement).append(el);
-            const kill = () => { if (!el.parentNode) return; el.style.transition = "opacity .3s,transform .3s"; el.style.opacity = "0"; el.style.transform = "translate(-50%,-14px)"; setTimeout(() => el.remove(), 320); };
-            x.addEventListener("click", kill);
-            setTimeout(kill, 9000);
+        const emojiRain = em => { const g = Array.from(String(em || "🎉").trim()).filter(c => c.trim()).slice(0, 6); rainGlyph(g.length ? g : ["🎉"], false); };
+        const hearts = () => rainGlyph(["❤", "💛", "💚", "💙", "💜", "🧡"], true);
+        const stars = () => {
+            ensureFx(); const host = fsLayer();
+            for (let i = 0; i < 70; i++) { const d = document.createElement("div"); const sz = 2 + Math.random() * 4; d.style.cssText = "position:absolute;top:" + (Math.random() * 100) + "vh;left:" + (Math.random() * 100) + "vw;width:" + sz + "px;height:" + sz + "px;border-radius:50%;background:#fff;box-shadow:0 0 " + (4 + Math.random() * 10) + "px #fff;animation:bcTwinkle " + (1 + Math.random() * 2) + "s ease " + (Math.random() * 2) + "s infinite"; host.append(d); }
+            setTimeout(() => host.remove(), 6000);
         };
-        const shake = () => {
-            const t = document.querySelector('[class*="app_"], #app-mount') || document.body;
-            if (!t) return; t.classList.remove("bc-shake"); void t.offsetWidth; ensureFx(); t.classList.add("bc-shake");
-            setTimeout(() => t.classList.remove("bc-shake"), 700);
+        const flash = color => {
+            const c = accent(color); const d = document.createElement("div");
+            d.style.cssText = "position:fixed;inset:0;z-index:" + Z + ";pointer-events:none;background:" + c + ";opacity:0;transition:opacity .11s";
+            (document.body || document.documentElement).append(d);
+            let n = 0; (function pulse() { n++; d.style.opacity = (n % 2) ? ".6" : "0"; if (n < 6) setTimeout(pulse, 115); else { d.style.opacity = "0"; setTimeout(() => d.remove(), 200); } })();
+        };
+        const rainbow = dur => { ensureFx(); const d = document.createElement("div"); d.className = "bc-rainbow"; (document.body || document.documentElement).append(d); setTimeout(() => { d.style.opacity = "0"; setTimeout(() => d.remove(), 420); }, (dur || 4) * 1000); };
+        const invert = () => { const t = appRoot(); if (!t) return; const old = t.style.filter; let n = 0; (function go() { n++; t.style.filter = (n % 2) ? "invert(1) hue-rotate(180deg)" : old; if (n < 6) setTimeout(go, 130); else t.style.filter = old; })(); };
+        const pulse = () => { const t = appRoot(); if (!t) return; ensureFx(); t.classList.remove("bc-pulse"); void t.offsetWidth; t.classList.add("bc-pulse"); setTimeout(() => t.classList.remove("bc-pulse"), 720); };
+        const shake = () => { const t = appRoot(); if (!t) return; ensureFx(); t.classList.remove("bc-shake"); void t.offsetWidth; t.classList.add("bc-shake"); setTimeout(() => t.classList.remove("bc-shake"), 700); };
+
+        // full-screen host that fades in, is click-dismissable and auto-closes
+        const fsHost = (bgCss, ms) => {
+            ensureFx(); const el = document.createElement("div"); el.className = "bc-fs"; el.style.cssText += ";" + bgCss;
+            (document.body || document.documentElement).append(el);
+            const kill = () => { if (!el.parentNode) return; el.style.transition = "opacity .35s"; el.style.opacity = "0"; setTimeout(() => el.remove(), 360); };
+            el.addEventListener("click", kill); if (ms) setTimeout(kill, ms);
+            return { el, kill };
+        };
+        const announce = (title, text, color, dur) => {
+            const c = accent(color);
+            const { el } = fsHost("background:radial-gradient(circle at 50% 38%," + hexA(c, .24) + ",rgba(0,0,0,.9) 70%),rgba(0,0,0,.84);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);cursor:pointer;padding:6vw", (dur || 7) * 1000);
+            el.style.setProperty("--bcc", c);
+            if (title) { const sub = document.createElement("div"); sub.className = "bc-fs-sub"; sub.textContent = title; el.append(sub); }
+            const big = document.createElement("div"); big.className = "bc-fs-big"; big.textContent = text || ""; el.append(big);
+            const hint = document.createElement("div"); hint.className = "bc-fs-hint"; hint.textContent = "kliknij, aby zamknąć"; el.append(hint);
+        };
+        const bigtext = (text, color, dur) => {
+            const c = accent(color);
+            const { el } = fsHost("background:rgba(0,0,0,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);cursor:pointer", (dur || 4) * 1000);
+            el.style.setProperty("--bcc", c);
+            const big = document.createElement("div"); big.className = "bc-fs-big"; big.style.animation = "bcPop .5s cubic-bezier(.2,1.4,.3,1) both"; big.textContent = text || "beecord"; el.append(big);
+        };
+        const marquee = (text, color, dur) => {
+            ensureFx(); const band = document.createElement("div"); band.className = "bc-marquee"; band.style.setProperty("--bcc", accent(color)); band.style.setProperty("--d", (dur || 8) + "s");
+            const span = document.createElement("span"); span.textContent = "   " + (text || "beecord") + "   "; band.append(span);
+            (document.body || document.documentElement).append(band);
+            setTimeout(() => band.remove(), (dur || 8) * 1000 + 400);
+        };
+        const image = (url, dur) => {
+            if (!/^https:\/\//i.test(url || "")) return;
+            const { el } = fsHost("background:rgba(0,0,0,.88);cursor:pointer;padding:4vh", (dur || 6) * 1000);
+            const img = document.createElement("img"); img.src = url; img.referrerPolicy = "no-referrer";
+            img.style.cssText = "max-width:92vw;max-height:84vh;border-radius:14px;box-shadow:0 24px 90px rgba(0,0,0,.7);object-fit:contain";
+            img.onerror = () => el.remove(); el.append(img);
+            const hint = document.createElement("div"); hint.className = "bc-fs-hint"; hint.textContent = "kliknij, aby zamknąć"; el.append(hint);
         };
 
         const run = (e) => {
@@ -2969,12 +3024,25 @@
             if (!markSeen(e.id)) return;                    // already played on this machine
             const d = e.data || {};
             try {
-                if (e.type === "confetti") confetti();
-                else if (e.type === "snow") snow();
-                else if (e.type === "emoji") emojiRain(d.emoji);
-                else if (e.type === "announce") announce(d.title, d.text, d.color);
-                else if (e.type === "toast") toast(d.text || "beecord", d.color || "#9dbfea", 5000);
-                else if (e.type === "shake") shake();
+                switch (e.type) {
+                    case "confetti": confetti(); break;
+                    case "snow": snow(); break;
+                    case "fireworks": fireworks(); break;
+                    case "matrix": matrix(); break;
+                    case "emoji": emojiRain(d.emoji); break;
+                    case "hearts": hearts(); break;
+                    case "stars": stars(); break;
+                    case "flash": flash(d.color); break;
+                    case "rainbow": rainbow(d.dur); break;
+                    case "invert": invert(); break;
+                    case "pulse": pulse(); break;
+                    case "shake": shake(); break;
+                    case "announce": announce(d.title, d.text, d.color, d.dur); break;
+                    case "bigtext": bigtext(d.text, d.color, d.dur); break;
+                    case "marquee": marquee(d.text, d.color, d.dur); break;
+                    case "image": image(d.url, d.dur); break;
+                    case "toast": toast(d.text || "beecord", d.color || "#9dbfea", 5000); break;
+                }
             } catch (err) { try { console.log("[beecord] event error " + (err && err.message)); } catch { } }
         };
         window.addEventListener("beecord-event", ev => { try { run(ev.detail); } catch { } });
