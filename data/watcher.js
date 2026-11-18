@@ -169,6 +169,26 @@ function copyDirInto(srcDir, dstDir, onlyExt) {
     }
     return changed;
 }
+// Extract a .zip on Windows. tar.exe reads an argument like "C:\x.zip" as a remote host ("host:path"),
+// failing with "Cannot connect to C:", so we run it from the archive's folder with bare filenames.
+// Falls back to PowerShell's Expand-Archive, which handles drive-letter paths fine.
+function extractZip(zip, dir) {
+    try {
+        execFileSync("tar.exe", ["-xf", path.basename(zip), "-C", path.basename(dir)],
+            { windowsHide: true, cwd: path.dirname(zip) });
+        return;
+    } catch (e1) {
+        try {
+            execFileSync("powershell.exe",
+                ["-NoProfile", "-NonInteractive", "-Command",
+                    "Expand-Archive -LiteralPath " + JSON.stringify(zip) + " -DestinationPath " + JSON.stringify(dir) + " -Force"],
+                { windowsHide: true });
+            return;
+        } catch (e2) {
+            throw new Error("extract failed (tar: " + (e1 && e1.message) + "; ps: " + (e2 && e2.message) + ")");
+        }
+    }
+}
 async function ghFetch(url, token, asBuffer) {
     if (typeof fetch !== "function") throw new Error("this Node is too old (needs built-in fetch, Node 18+)");
     const headers = { "User-Agent": "beecord-updater", "Accept": asBuffer ? "application/octet-stream" : "application/vnd.github+json" };
@@ -199,7 +219,7 @@ async function syncFromRepo(force) {
         fs.writeFileSync(tmpZip, buf);
         try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { }
         fs.mkdirSync(tmpDir, { recursive: true });
-        execFileSync("tar.exe", ["-xf", tmpZip, "-C", tmpDir], { windowsHide: true });
+        extractZip(tmpZip, tmpDir);
         const top = fs.readdirSync(tmpDir).map(n => path.join(tmpDir, n)).find(p => { try { return fs.statSync(p).isDirectory(); } catch { return false; } });
         if (!top) throw new Error("archive had no folder");
 
