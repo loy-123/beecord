@@ -21,9 +21,14 @@ const ranksDeriveUid = id => {
 };
 const ranksBuild = draft => {
     const dist = (typeof window !== "undefined" && window.__beecordRanks) || {};
+    // With a server configured, the server is the single source of truth for users (local drafts are
+    // ignored, so a stale draft can't hide a server UID). Without a server, show the local draft preview.
+    const users = dist.server
+        ? Object.assign({}, dist.users || {})
+        : Object.assign({}, dist.users || {}, (draft && draft.users) || {});
     return {
         ranks: Object.assign({}, RANKS_DEFAULT, dist.ranks || {}, (draft && draft.ranks) || {}),
-        users: Object.assign({}, dist.users || {}, (draft && draft.users) || {})
+        users
     };
 };
 const ranksMyId = api => { try { const US = api.stores.get("UserStore"); const u = US && US.getCurrentUser && US.getCurrentUser(); return (u && u.id) || null; } catch { return null; } };
@@ -272,7 +277,6 @@ function ranksOpenAdmin(api) {
                 const ok = await api.ui.confirm("Claim ownership", "Make THIS computer + your current Discord account the beecord owner?\n\nThis unlocks the admin panel here only. To make yourself owner for everyone, open the admin panel and push ranks.json to the repo.", "Claim", "Cancel");
                 if (!ok) return;
                 api.settings.set("ownerId", myId);
-                const d = api.settings.get("draft", {}) || {}; d.users = d.users || {}; d.users[myId] = { rank: "owner" }; api.settings.set("draft", d);
                 api.toast("You are now the owner on this machine", "#80d09c", 2200);
                 ranksOpenAdmin(api);
             });
