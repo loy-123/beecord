@@ -2259,42 +2259,63 @@
     // Measure Discord's settings content box (the area right of its category sidebar) as insets from each
     // window edge. We prefer Discord's own content-region element so the panel lands exactly where the
     // native settings page does — flush to the sidebar, no native content peeking on the left.
-    function settingsRegion() {
-        const out = { left: panelLeft, top: 0, right: 0, bottom: 0, ok: false };
+    // Discord's settings dropped the old "standardSidebarView" class, so find the content area structurally:
+    // walk up from the nav (which holds beecord's tabs); the content is a large sibling branch to its right.
+    function findContentRegion() {
         try {
-            const sv = (sidebarEl && sidebarEl.closest && sidebarEl.closest('[class*="standardSidebarView"]')) || document.querySelector('[class*="standardSidebarView"]');
-            if (!sv) return out;
-            // Prefer Discord's own content-region element. If the class ever changes, fall back to the
-            // settings view's layout: it's [ nav sidebar | content ], so the last element child is content.
-            let content = sv.querySelector('[class*="contentRegion"]');
-            if (!content) {
-                const kids = [...sv.children].filter(c => c.nodeType === 1);
-                if (kids.length >= 2) content = kids[kids.length - 1];
+            const nav = (sidebarEl && sidebarEl.closest && sidebarEl.closest('[class*="sidebar"]'));
+            if (!nav) return null;
+            const navR = nav.getBoundingClientRect();
+            let node = nav;
+            for (let i = 0; i < 5 && node && node.parentElement; i++) {
+                const sibs = [...node.parentElement.children].filter(c => c.nodeType === 1 && !c.contains(nav));
+                const hit = sibs.filter(c => { const r = c.getBoundingClientRect(); return r.left >= navR.right - 8 && r.width > 150 && r.height > 150; })
+                    .sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width)[0];
+                if (hit) return hit;
+                node = node.parentElement;
             }
-            const box = (content || sv).getBoundingClientRect();
-            out.top = Math.max(0, Math.round(box.top));
-            out.right = Math.max(0, Math.round(window.innerWidth - box.right));
-            out.bottom = Math.max(0, Math.round(window.innerHeight - box.bottom));
-            if (content && box.width > 120) {
-                out.left = Math.max(0, Math.round(box.left));
-            } else {
-                // last resort: sit flush against the nav sidebar's right edge
-                const nav = (sidebarEl && sidebarEl.closest && sidebarEl.closest('[class*="sidebar"]')) || sv.querySelector('[class*="sidebar"]');
-                out.left = nav ? Math.max(0, Math.round(nav.getBoundingClientRect().right)) : Math.max(0, Math.round(box.left));
-            }
-            out.ok = true;
         } catch { }
-        return out;
+        return null;
+    }
+
+    // The element that position:fixed resolves against. Discord's settings modal has a transform, which
+    // makes it (not the viewport) the containing block for our fixed panel, so we must offset against it.
+    function fixedContainingBlock(el) {
+        try {
+            for (let n = el && el.parentElement; n && n.nodeType === 1 && n !== document.documentElement; n = n.parentElement) {
+                const s = getComputedStyle(n);
+                if ((s.transform && s.transform !== "none") || (s.perspective && s.perspective !== "none") ||
+                    (s.filter && s.filter !== "none") || /transform|filter|perspective/.test(s.willChange || "") ||
+                    /paint|layout|strict|content/.test(s.contain || "") || (s.backdropFilter && s.backdropFilter !== "none")) return n;
+            }
+        } catch { }
+        return null;
+    }
+
+    // Viewport rect (edge coords) of the settings content region, or a nav-flush fallback.
+    function settingsRegion() {
+        try {
+            const content = findContentRegion();
+            if (content) { const b = content.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom }; }
+            const nav = (sidebarEl && sidebarEl.closest && sidebarEl.closest('[class*="sidebar"]'));
+            if (nav) { const r = nav.getBoundingClientRect(); return { left: r.right, top: r.top, right: window.innerWidth, bottom: r.bottom }; }
+        } catch { }
+        return null;
     }
 
     function positionPanel() {
         if (!panel) return;
         const g = settingsRegion();
-        panelLeft = g.left;   // keep in sync so close/resize logic matches what's on screen
-        panel.style.left = g.left + "px";
-        panel.style.top = g.top + "px";
-        panel.style.right = g.right + "px";
-        panel.style.bottom = g.bottom + "px";
+        if (!g) return;
+        panelLeft = Math.round(g.left);   // viewport left, for close/resize logic
+        // position:fixed is resolved against the nearest transformed ancestor (Discord's settings modal),
+        // not the viewport — so convert our viewport target rect into offsets from that containing block.
+        const cb = fixedContainingBlock(panel);
+        const c = cb ? cb.getBoundingClientRect() : { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+        panel.style.left = Math.round(g.left - c.left) + "px";
+        panel.style.top = Math.round(g.top - c.top) + "px";
+        panel.style.right = Math.round(c.right - g.right) + "px";
+        panel.style.bottom = Math.round(c.bottom - g.bottom) + "px";
     }
 
     // our sidebar tabs look selected only while their panel is open
@@ -2306,10 +2327,12 @@
         }
     }
 
-    // Append the panel inside Discord's settings view (which holds the focus-trap), not document.body —
-    // otherwise the trap yanks focus back the instant one of our inputs is clicked, so you can't type.
+    // Append the panel inside Discord's settings content region — it's inside the modal's focus-trap (so our
+    // inputs keep focus) and is wide enough not to clip the panel. Falls back to the old settings-view anchor.
     function panelHost() {
         try {
+            const content = findContentRegion();
+            if (content) return content;
             const anchor = sidebarEl || document.querySelector('[class*="standardSidebarView"]');
             return (anchor && anchor.closest && anchor.closest('[class*="standardSidebarView"]')) || (anchor && anchor.parentElement) || document.body;
         } catch { return document.body; }
