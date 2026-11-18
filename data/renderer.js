@@ -2865,5 +2865,120 @@
         window.addEventListener("beecord-ranks", () => { try { for (const el of document.querySelectorAll('[class*="username_"]')) el.__bcAuthor = undefined; scan(); } catch { } });
     })();
 
+    // ---- broadcast events: the owner can push an on-screen effect to every beecord client ----
+    // (confetti, snow, emoji rain, an announcement banner, a toast, a quick screen-shake). The loader
+    // polls the server's /event and fires a "beecord-event"; we de-dupe per machine so it plays once.
+    (function beecordEvents() {
+        const SEEN = "bc_events_seen";
+        const seen = () => { try { return JSON.parse(localStorage.getItem(SEEN) || "[]"); } catch { return []; } };
+        const markSeen = id => { try { const a = seen(); if (a.indexOf(id) >= 0) return false; a.push(id); while (a.length > 40) a.shift(); localStorage.setItem(SEEN, JSON.stringify(a)); return true; } catch { return true; } };
+        const myId = () => { try { const US = getStore("UserStore"); const me = US && US.getCurrentUser && US.getCurrentUser(); return (me && me.id) || null; } catch { return null; } };
+        const Z = 2147483000;
+
+        let styled = false;
+        const ensureFx = () => {
+            if (styled) return; styled = true;
+            const s = document.createElement("style");
+            s.textContent =
+                "@keyframes bcShake{10%,90%{transform:translate3d(-2px,0,0)}20%,80%{transform:translate3d(4px,0,0)}30%,50%,70%{transform:translate3d(-8px,0,0)}40%,60%{transform:translate3d(8px,0,0)}}" +
+                ".bc-shake{animation:bcShake .6s cubic-bezier(.36,.07,.19,.97) both}" +
+                "@keyframes bcFall{to{transform:translateY(105vh) rotate(var(--r,360deg));opacity:.9}}" +
+                "@keyframes bcAnnounceIn{from{transform:translate(-50%,-20px) scale(.96);opacity:0}to{transform:translate(-50%,0) scale(1);opacity:1}}" +
+                ".bc-announce{position:fixed;top:54px;left:50%;transform:translateX(-50%);z-index:" + Z + ";max-width:min(520px,92vw);padding:14px 18px;border-radius:14px;" +
+                "background:linear-gradient(180deg,rgba(24,25,30,.98),rgba(16,17,21,.98));box-shadow:0 18px 60px rgba(0,0,0,.6);border:1px solid var(--ig-border,rgba(255,255,255,.08));" +
+                "border-left:3px solid var(--bcc,#9dbfea);color:#f2f3f5;font-family:var(--ig-font,'gg sans',sans-serif);animation:bcAnnounceIn .4s cubic-bezier(.22,1,.36,1) both}" +
+                ".bc-announce h4{margin:0 0 4px;font-size:14px;font-weight:800;color:var(--bcc,#9dbfea);letter-spacing:.3px}" +
+                ".bc-announce p{margin:0;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word}" +
+                ".bc-announce .x{position:absolute;top:8px;right:10px;cursor:pointer;color:#80848e;font-size:15px;line-height:1}" +
+                ".bc-announce .x:hover{color:#f2f3f5}";
+            (document.head || document.documentElement).append(s);
+        };
+
+        // particle canvas used by confetti + snow
+        const particles = (opts) => {
+            const cv = document.createElement("canvas");
+            cv.style.cssText = "position:fixed;inset:0;z-index:" + Z + ";pointer-events:none";
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            const W = innerWidth, H = innerHeight;
+            cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + "px"; cv.style.height = H + "px";
+            (document.body || document.documentElement).append(cv);
+            const ctx = cv.getContext("2d"); ctx.scale(dpr, dpr);
+            const P = opts.make(W, H);
+            const start = performance.now(); let prev = start;
+            (function frame(now) {
+                const dt = Math.min(40, now - prev); prev = now; ctx.clearRect(0, 0, W, H);
+                let alive = 0;
+                for (const p of P) { opts.step(p, dt, W, H); if (p.y < H + 40) alive++; opts.draw(ctx, p); }
+                if (now - start < opts.dur && (alive > 0 || now - start < opts.spawnFor)) requestAnimationFrame(frame);
+                else cv.remove();
+            })(start);
+        };
+        const CONFO = ["#f0888a", "#e8c478", "#80d09c", "#9dbfea", "#b69cf0", "#f2a9bc", "#ffffff"];
+        const confetti = () => particles({
+            dur: 6000, spawnFor: 0,
+            make: (W, H) => { const a = []; for (let i = 0; i < 180; i++) a.push({ x: Math.random() * W, y: -20 - Math.random() * H * .4, w: 6 + Math.random() * 6, h: 8 + Math.random() * 8, vx: -2.5 + Math.random() * 5, vy: 2 + Math.random() * 4, rot: Math.random() * 6.28, vr: -.2 + Math.random() * .4, c: CONFO[i % CONFO.length] }); return a; },
+            step: (p, dt) => { const k = dt / 16; p.x += p.vx * k; p.y += p.vy * k; p.vy += .03 * k; p.rot += p.vr * k; },
+            draw: (ctx, p) => { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.c; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore(); }
+        });
+        const snow = () => particles({
+            dur: 9000, spawnFor: 7000,
+            make: (W, H) => { const a = []; for (let i = 0; i < 140; i++) a.push({ x: Math.random() * W, y: Math.random() * H - H, r: 1.5 + Math.random() * 3, vy: .6 + Math.random() * 1.6, drift: Math.random() * 6.28, ds: .01 + Math.random() * .03, o: .4 + Math.random() * .5 }); return a; },
+            step: (p, dt, W, H) => { const k = dt / 16; p.y += p.vy * k; p.drift += p.ds * k; p.x += Math.sin(p.drift) * .6 * k; if (p.y > H + 5) { p.y = -5; p.x = Math.random() * W; } },
+            draw: (ctx, p) => { ctx.globalAlpha = p.o; ctx.fillStyle = "#eaf2ff"; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.28); ctx.fill(); ctx.globalAlpha = 1; }
+        });
+        const emojiRain = (em) => {
+            const glyphs = (Array.from(String(em || "🎉").trim()).filter(c => c.trim())).slice(0, 6);
+            if (!glyphs.length) glyphs.push("🎉");
+            ensureFx();
+            const host = document.createElement("div");
+            host.style.cssText = "position:fixed;inset:0;z-index:" + Z + ";pointer-events:none;overflow:hidden";
+            (document.body || document.documentElement).append(host);
+            for (let i = 0; i < 46; i++) {
+                const s = document.createElement("span");
+                s.textContent = glyphs[i % glyphs.length];
+                const size = 18 + Math.random() * 26, dur = 3 + Math.random() * 3, delay = Math.random() * 2.5;
+                s.style.cssText = "position:absolute;top:-40px;left:" + (Math.random() * 100) + "vw;font-size:" + size + "px;--r:" + (Math.floor(Math.random() * 720) - 360) + "deg;" +
+                    "animation:bcFall " + dur + "s linear " + delay + "s forwards;will-change:transform,opacity";
+                host.append(s);
+            }
+            setTimeout(() => host.remove(), 9000);
+        };
+        const announce = (title, text, color) => {
+            ensureFx();
+            const el = document.createElement("div");
+            el.className = "bc-announce";
+            if (color && /^#?[0-9a-fA-F]{3,8}$/.test(color)) el.style.setProperty("--bcc", color.replace(/^#?/, "#"));
+            const x = document.createElement("span"); x.className = "x"; x.textContent = "✕";
+            const h4 = document.createElement("h4"); h4.textContent = title || "beecord";
+            const p = document.createElement("p"); p.textContent = text || "";
+            el.append(x, h4, p);
+            (document.body || document.documentElement).append(el);
+            const kill = () => { if (!el.parentNode) return; el.style.transition = "opacity .3s,transform .3s"; el.style.opacity = "0"; el.style.transform = "translate(-50%,-14px)"; setTimeout(() => el.remove(), 320); };
+            x.addEventListener("click", kill);
+            setTimeout(kill, 9000);
+        };
+        const shake = () => {
+            const t = document.querySelector('[class*="app_"], #app-mount') || document.body;
+            if (!t) return; t.classList.remove("bc-shake"); void t.offsetWidth; ensureFx(); t.classList.add("bc-shake");
+            setTimeout(() => t.classList.remove("bc-shake"), 700);
+        };
+
+        const run = (e) => {
+            if (!e || !e.id) return;
+            if (e.target && e.target !== myId()) return;   // aimed at a specific person, not me
+            if (!markSeen(e.id)) return;                    // already played on this machine
+            const d = e.data || {};
+            try {
+                if (e.type === "confetti") confetti();
+                else if (e.type === "snow") snow();
+                else if (e.type === "emoji") emojiRain(d.emoji);
+                else if (e.type === "announce") announce(d.title, d.text, d.color);
+                else if (e.type === "toast") toast(d.text || "beecord", d.color || "#9dbfea", 5000);
+                else if (e.type === "shake") shake();
+            } catch (err) { try { console.log("[beecord] event error " + (err && err.message)); } catch { } }
+        };
+        window.addEventListener("beecord-event", ev => { try { run(ev.detail); } catch { } });
+    })();
+
     tick();
 })();

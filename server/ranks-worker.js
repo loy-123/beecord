@@ -17,6 +17,9 @@
 //   POST /assign  {adminKey,userId,rank,uid?}  -> assigns (unique UID enforced)   (owner only)
 //   POST /remove  {adminKey,userId}            -> removes                          (owner only)
 //   POST /rank    {adminKey,id,label?,color?,glow?,priority?,delete?} -> edit a tier (owner only)
+//   GET  /event                 -> current broadcast event or {}          (public, clients poll it)
+//   POST /event   {adminKey,type,data?,ttl?,target?} -> broadcast an on-screen event (owner only)
+//                 type: confetti|snow|emoji|announce|toast|shake|clear; data:{text,title,emoji,color}
 
 const DEFAULT = {
     ranks: {
@@ -62,6 +65,11 @@ export default {
         if (req.method === "GET" && url.pathname === "/uid/check") {
             const uid = (url.searchParams.get("uid") || "").trim();
             return json({ uid, available: !!uid && !uidTaken(reg, uid, null) });
+        }
+        // current broadcast event (confetti / announcement / …); clients poll this. Empty when none/expired.
+        if (req.method === "GET" && url.pathname === "/event") {
+            try { const s = await env.RANKS.get("event"); if (s) { const e = JSON.parse(s); if (!e.expires || Date.now() <= e.expires) return json(e); } } catch { }
+            return json({});
         }
 
         // ---- presence: a beecord client registers its OWN user id + profile (no admin key; cosmetic). ----
@@ -116,6 +124,23 @@ export default {
                 delete reg.users[userId];
                 await save(env, reg);
                 return json({ ok: true, userId });
+            }
+            if (url.pathname === "/event") {
+                const type = String(body.type || "").trim();
+                const ALLOWED = ["confetti", "snow", "emoji", "announce", "toast", "shake", "clear"];
+                if (!ALLOWED.includes(type)) return json({ error: "unknown event type" }, 400);
+                if (type === "clear") { try { await env.RANKS.delete("event"); } catch { } return json({ ok: true, cleared: true }); }
+                const ttl = Math.min(600, Math.max(5, Number(body.ttl) || 45));   // seconds the event stays "fresh" for polling clients
+                const src = (body.data && typeof body.data === "object") ? body.data : {};
+                const data = {};
+                if (typeof src.text === "string") data.text = src.text.slice(0, 300);
+                if (typeof src.title === "string") data.title = src.title.slice(0, 80);
+                if (typeof src.emoji === "string") data.emoji = src.emoji.slice(0, 40);
+                if (typeof src.color === "string") data.color = src.color.slice(0, 32);
+                const target = (body.target && /^\d{15,22}$/.test(String(body.target))) ? String(body.target) : null;
+                const event = { id: Date.now(), type, data, target, at: Date.now(), expires: Date.now() + ttl * 1000 };
+                try { await env.RANKS.put("event", JSON.stringify(event), { expirationTtl: Math.max(60, ttl + 60) }); } catch { }
+                return json({ ok: true, event });
             }
             if (url.pathname === "/rank") {
                 const id = String(body.id || "").trim();

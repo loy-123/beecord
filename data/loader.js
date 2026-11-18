@@ -381,6 +381,28 @@ function startRanksSync(wc) {
     if (!ranksSyncTimer) ranksSyncTimer = setInterval(() => syncRanksFromServer(ranksSyncWC), 3 * 60 * 1000);
 }
 
+// ---- live broadcast events (confetti / announcements / …) pushed by the owner via the server ----
+// Polled more often than ranks so an event shows within ~15s. De-duped by id in the page (localStorage),
+// so restarting Discord within the event's TTL doesn't replay it.
+let eventPollWC = null, eventPollTimer = null, lastEventId = 0;
+async function pollEvent(wc) {
+    const base = ranksServerUrl();
+    if (!base || typeof fetch !== "function" || !wc || wc.isDestroyed()) return;
+    try {
+        const res = await fetch(base + "/event", { cache: "no-store" });
+        if (!res.ok) return;
+        const e = await res.json();
+        if (!e || !e.id || e.id === lastEventId) return;
+        lastEventId = e.id;
+        await wc.executeJavaScript(`window.dispatchEvent(new CustomEvent("beecord-event",{detail:${JSON.stringify(e)}}));`).catch(() => { });
+    } catch { /* offline / no event endpoint yet: ignore */ }
+}
+function startEventPoll(wc) {
+    eventPollWC = wc;
+    pollEvent(wc);
+    if (!eventPollTimer) eventPollTimer = setInterval(() => pollEvent(eventPollWC), 15 * 1000);
+}
+
 // ---------- themes (Themes plugin) ----------
 // Local themes: %APPDATA%\beecord\themes\*.css (BetterDiscord *.theme.css works too).
 // URL themes: list in themes\urls.json, downloaded copy in themes\.remote\<id>.css.
@@ -824,6 +846,7 @@ app.on("browser-window-created", (_event, win) => {
                 `window.__beecordInfo = ${JSON.stringify(info)};`
             ).catch(() => {});
             startRanksSync(win.webContents);   // pull live ranks from the server + keep them fresh
+            startEventPoll(win.webContents);   // pull live broadcast events (confetti / announcements / …)
             const code = fs.readFileSync(path.join(__dirname, "renderer.js"), "utf8");
             await win.webContents.executeJavaScript(code);
             if (safe) {
