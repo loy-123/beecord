@@ -63,12 +63,19 @@ let refreshSpotify = null;
         .bsp-roll-svg{width:13px;height:13px;fill:currentColor;transition:transform .25s cubic-bezier(.3,1.5,.5,1)}
         .bsp-card.bsp-collapsed .bsp-roll-svg{transform:rotate(180deg)}
         .bsp-card.bsp-collapsed{padding:6px 10px 6px 10px;margin-top:4px;cursor:pointer}
-        /* collapsible body: animate its height (grid 1fr->0fr) + fade instead of display:none snapping */
-        .bsp-body{display:grid;grid-template-rows:1fr;transition:grid-template-rows .32s cubic-bezier(.33,0,.2,1),opacity .24s ease .04s}
-        .bsp-body-inner{display:flex;flex-direction:column;overflow:hidden;min-height:0}
-        .bsp-card.bsp-collapsed .bsp-body{grid-template-rows:0fr;opacity:0;transition:grid-template-rows .32s cubic-bezier(.33,0,.2,1),opacity .16s ease}
+        /* collapsible body: JS animates height(px)->0 + fade. Lighter and snap-free vs grid/display:none */
+        .bsp-body{overflow:hidden;height:auto;opacity:1;contain:layout;will-change:height;
+            transition:height .3s cubic-bezier(.33,0,.2,1),opacity .2s ease}
+        .bsp-body-inner{display:flex;flex-direction:column;min-height:0}
         .bsp-card.bsp-collapsed .bsp-row{gap:8px;padding-top:6px}
         .bsp-card.bsp-collapsed .bsp-art{width:24px;height:24px;border-radius:5px}
+        /* while collapsed, freeze the inner animations so they don't relayout/burn CPU behind the hidden panel */
+        .bsp-card.bsp-collapsed .bsp-wave i,
+        .bsp-card.bsp-collapsed .bsp-vw.lit i,
+        .bsp-card.bsp-collapsed .bsp-eq i,
+        .bsp-card.bsp-collapsed .bsp-art,
+        .bsp-card.bsp-collapsed .bsp-marq.scroll .bsp-title,
+        .bsp-card.bsp-collapsed .bsp-btn.main::before{animation-play-state:paused!important}
         .bsp-card.bsp-collapsed .bsp-art svg{width:13px;height:13px}
         .bsp-card.bsp-collapsed .bsp-marq{font-size:12px;line-height:15px}
         .bsp-card.bsp-collapsed .bsp-artist{font-size:10.5px;line-height:13px}
@@ -234,6 +241,7 @@ let refreshSpotify = null;
             isCollapsed = !isCollapsed;
             api.settings.set("collapsed", isCollapsed);
             render();
+            applyCollapsed(true);
         });
 
         els.bg = h("div", { class: "bsp-bg" });
@@ -423,10 +431,43 @@ let refreshSpotify = null;
                 isCollapsed = false;
                 api.settings.set("collapsed", false);
                 render();
+                applyCollapsed(true);
             } else {
                 e.stopPropagation();
             }
         });
+
+        // Animate the body's height in pixels (auto<->0). Reliable and compositor-light compared to
+        // grid-row interpolation, and never snaps because the start/end heights are explicit.
+        let collapseTimer = null;
+        function applyCollapsed(animate) {
+            if (!els.body) return;
+            if (collapseTimer) { clearTimeout(collapseTimer); collapseTimer = null; }
+            if (!animate) {   // set the state instantly (initial mount, reduced motion)
+                els.body.style.transition = "none";
+                els.body.style.height = isCollapsed ? "0px" : "auto";
+                els.body.style.opacity = isCollapsed ? "0" : "1";
+                void els.body.offsetHeight;        // flush, then let CSS own the transition again
+                els.body.style.transition = "";
+                return;
+            }
+            const full = els.bodyInner.offsetHeight;   // natural height of the content
+            if (isCollapsed) {
+                els.body.style.height = full + "px";   // pin the current height as the start point
+                void els.body.offsetHeight;
+                els.body.style.height = "0px";
+                els.body.style.opacity = "0";
+            } else {
+                els.body.style.opacity = "1";
+                els.body.style.height = "0px";
+                void els.body.offsetHeight;
+                els.body.style.height = full + "px";
+                collapseTimer = setTimeout(() => {     // after expanding, let it size to content again
+                    if (!isCollapsed) els.body.style.height = "auto";
+                    collapseTimer = null;
+                }, 320);
+            }
+        }
 
         // ---------- rendering ----------
         const setText = (el, v) => { if (el.textContent !== v) el.textContent = v; };
@@ -592,13 +633,14 @@ let refreshSpotify = null;
         let raf = 0, idle = 0;
         const loop = () => {
             raf = 0; idle = 0;
-            if (card.style.display !== "none" && st.playing && !document.hidden) { tick(); raf = requestAnimationFrame(loop); }
+            if (card.style.display !== "none" && st.playing && !document.hidden && !isCollapsed) { tick(); raf = requestAnimationFrame(loop); }
             else { if (card.style.display !== "none") tick(); idle = setTimeout(loop, 500); }
         };
         loop();
 
         render();
         mount();
+        applyCollapsed(false);   // set the saved open/closed state without animating on load
         send("start");
 
         api.cleanup(() => {
