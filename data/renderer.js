@@ -2256,19 +2256,45 @@
                 problemsCard));
     }
 
-    function positionPanel() {
-        if (!panel) return;
-        // Fit the panel to Discord's settings content region (right of its sidebar, below the title bar),
-        // so it sits inside the settings page instead of floating over it.
-        let top = 0, right = 0, bottom = 0;
+    // Measure Discord's settings content box (the area right of its category sidebar) as insets from each
+    // window edge. We prefer Discord's own content-region element so the panel lands exactly where the
+    // native settings page does — flush to the sidebar, no native content peeking on the left.
+    function settingsRegion() {
+        const out = { left: panelLeft, top: 0, right: 0, bottom: 0, ok: false };
         try {
             const sv = (sidebarEl && sidebarEl.closest && sidebarEl.closest('[class*="standardSidebarView"]')) || document.querySelector('[class*="standardSidebarView"]');
-            if (sv) { const r = sv.getBoundingClientRect(); top = Math.max(0, Math.round(r.top)); right = Math.max(0, Math.round(window.innerWidth - r.right)); bottom = Math.max(0, Math.round(window.innerHeight - r.bottom)); }
+            if (!sv) return out;
+            // Prefer Discord's own content-region element. If the class ever changes, fall back to the
+            // settings view's layout: it's [ nav sidebar | content ], so the last element child is content.
+            let content = sv.querySelector('[class*="contentRegion"]');
+            if (!content) {
+                const kids = [...sv.children].filter(c => c.nodeType === 1);
+                if (kids.length >= 2) content = kids[kids.length - 1];
+            }
+            const box = (content || sv).getBoundingClientRect();
+            out.top = Math.max(0, Math.round(box.top));
+            out.right = Math.max(0, Math.round(window.innerWidth - box.right));
+            out.bottom = Math.max(0, Math.round(window.innerHeight - box.bottom));
+            if (content && box.width > 120) {
+                out.left = Math.max(0, Math.round(box.left));
+            } else {
+                // last resort: sit flush against the nav sidebar's right edge
+                const nav = (sidebarEl && sidebarEl.closest && sidebarEl.closest('[class*="sidebar"]')) || sv.querySelector('[class*="sidebar"]');
+                out.left = nav ? Math.max(0, Math.round(nav.getBoundingClientRect().right)) : Math.max(0, Math.round(box.left));
+            }
+            out.ok = true;
         } catch { }
-        panel.style.left = panelLeft + "px";
-        panel.style.top = top + "px";
-        panel.style.right = right + "px";
-        panel.style.bottom = bottom + "px";
+        return out;
+    }
+
+    function positionPanel() {
+        if (!panel) return;
+        const g = settingsRegion();
+        panelLeft = g.left;   // keep in sync so close/resize logic matches what's on screen
+        panel.style.left = g.left + "px";
+        panel.style.top = g.top + "px";
+        panel.style.right = g.right + "px";
+        panel.style.bottom = g.bottom + "px";
     }
 
     // our sidebar tabs look selected only while their panel is open
@@ -2312,6 +2338,9 @@
         animateNext = true;
         panelHost().append(panel);   // inside Discord's settings view, so its focus-trap doesn't steal focus from our inputs
         markTabs();
+        // re-measure once it's in the DOM and again next frame, so it snaps to the content box immediately
+        positionPanel();
+        requestAnimationFrame(() => { if (panel) positionPanel(); });
     }
 
     function closePanel(keepTab) {
@@ -2632,6 +2661,8 @@
         try { ensureTab(); } catch { }
         // if Discord re-rendered the settings view and dropped our panel, put it back
         try { if (panel && !panel.isConnected) { panelHost().append(panel); markTabs(); } } catch { }
+        // keep the panel aligned to the settings content box as Discord's layout settles or changes
+        try { if (panel && panel.isConnected) positionPanel(); } catch { }
     }
 
     let tabTimer = null;
@@ -2650,12 +2681,7 @@
     document.addEventListener("keydown", e => {
         if (e.key === "Escape" && panel) { e.stopPropagation(); e.preventDefault(); closePanel(); }
     }, true);
-    window.addEventListener("resize", () => {
-        if (!panel || panelLeft === 0) return;
-        const sidebar = findSettingsSidebar();
-        if (sidebar) panelLeft = Math.round((sidebar.container.closest('[class*="sidebar"]') || sidebar.container).getBoundingClientRect().right);
-        positionPanel();
-    });
+    window.addEventListener("resize", () => { if (panel) positionPanel(); });
 
     // ---------- public API ----------
     window.beecord = {
