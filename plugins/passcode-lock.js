@@ -95,8 +95,6 @@
 .pcl-delay{display:flex;align-items:center;gap:6px;max-width:300px;text-align:center;font-size:12.5px;color:#f0b232;white-space:pre-line;opacity:0;height:0;overflow:hidden;transition:opacity .25s}
 .pcl-delay.pcl-on{opacity:1;height:auto;margin-top:2px}
 @keyframes pcl-shake{10%,90%{transform:translateX(-2px)}20%,80%{transform:translateX(4px)}30%,50%,70%{transform:translateX(-7px)}40%,60%{transform:translateX(7px)}}
-.pcl-escape{margin-top:14px;font-size:12px;color:#8a8f98;cursor:pointer;opacity:.75;transition:opacity .15s,color .15s;border-bottom:1px dotted transparent}
-.pcl-escape:hover{opacity:1;color:#c5cad1;border-bottom-color:#8a8f98}
 `);
 
         const LOCK_SVG = '<svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M19,10h-1V7.69c0-3.16-2.57-5.72-5.72-5.72H11.8C8.66,1.97,6,4.62,6,7.77V10H5c-0.55,0-1,0.45-1,1v8c0,1.65,1.35,3,3,3h10c1.65,0,3-1.35,3-3v-8C20,10.45,19.55,10,19,10z M8,7.77c0-2.06,1.74-3.8,3.8-3.8h0.48c2.05,0,3.72,1.67,3.72,3.72V10H8V7.77z M12,18c-0.83,0-1.5-0.67-1.5-1.5S11.17,15,12,15s1.5,0.67,1.5,1.5S12.83,18,12,18z"/></svg>';
@@ -166,15 +164,6 @@
 
             wrap.append(lk, input, submit);
             card.append(av, nm, sub, wrap, delay);
-            // escape hatch: a plain way out without the passcode, so a misbehaving lock can never
-            // trap you out of your own Discord (and you can reach beecord to turn the plugin off).
-            // Shown only on a real lock, and only if the option is on. Turn it off for a hard lock.
-            let escapeBtn = null;
-            if (type === "default" && S.get("escapeHatch", true)) {
-                escapeBtn = h("div", { class: "pcl-escape" }, "Dismiss lock");
-                escapeBtn.title = "Close this lock without the passcode, e.g. to turn the plugin off.";
-                card.append(escapeBtn);
-            }
             overlay.append(bg, card);
 
             const updateTitle = () => {
@@ -292,7 +281,6 @@
             });
             input.addEventListener("keyup", e => e.stopPropagation());
             submit.addEventListener("click", () => accept(input.value));
-            if (escapeBtn) escapeBtn.addEventListener("click", () => finish(false));
 
             delayTimer = setInterval(refreshDelay, 500);
             refreshDelay();
@@ -444,14 +432,13 @@
 
         return [
             row,
-            api.ui.note("Choose a passcode, then lock Discord with Ctrl+L (configurable), the ‘Lock now’ button, or automatically after being away. It won't lock on its own unless you turn on ‘Lock on startup’ or set an auto-lock timer. The passcode is hashed (PBKDF2) and never leaves this computer. The ‘Dismiss lock’ escape lets you close the lock without the passcode (handy, but turn it off if you want a hard lock). If a lock screen ever gets stuck, run window.__beecordPCLReset() in DevTools."),
+            api.ui.note("Choose a passcode, then lock Discord with Ctrl+L (configurable), the ‘Lock now’ button, or automatically after being away. It won't lock on its own unless you turn on ‘Lock on startup’ or set an auto-lock timer. The passcode is hashed (PBKDF2) and never leaves this computer. If a lock screen ever gets stuck, run window.__beecordPCLReset() in DevTools."),
             api.ui.row("Code type", api.ui.select([["4-digit", "4-digit numeric"], ["6-digit", "6-digit numeric"], ["custom-numeric", "Custom length (press Enter)"]],
                 api.settings.get("codeType", "4-digit"), v => api.settings.set("codeType", v))),
             api.ui.row("Lock keybind", api.ui.input(api.settings.get("keybind", "control+l"), v => api.settings.set("keybind", String(v).trim() || "control+l"), "control+l")),
             api.ui.row("Auto-lock after being away for", api.ui.select([["0", "Disabled"], ["60", "1 minute"], ["300", "5 minutes"], ["3600", "1 hour"], ["18000", "5 hours"]],
                 String(api.settings.get("autolockSeconds", 0)), v => api.settings.set("autolockSeconds", Number(v)))),
             api.ui.row("Lock on startup", api.ui.toggle(api.settings.get("lockOnStartup", false), v => api.settings.set("lockOnStartup", v))),
-            api.ui.row("Show a ‘Dismiss lock’ escape on the lock screen", api.ui.toggle(api.settings.get("escapeHatch", true), v => api.settings.set("escapeHatch", v))),
             api.ui.row("Hide notification content while locked", api.ui.toggle(api.settings.get("hideNotifications", true), v => api.settings.set("hideNotifications", v))),
             api.ui.row("Deafen while locked", api.ui.toggle(api.settings.get("deafenWhileLocked", false), v => api.settings.set("deafenWhileLocked", v))),
             api.ui.row("Log out of Discord on wrong passcode", api.ui.select([["0", "Never"], ["1", "After 1 wrong try"], ["2", "After 2 wrong tries"], ["3", "After 3 wrong tries"]],
